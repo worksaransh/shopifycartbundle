@@ -1,4 +1,4 @@
-import type { BundleRow, SyncState, VolumeRow } from "../../app/services/sync/desired";
+import type { BundleRow, SyncState, UpsellRow, VolumeRow } from "../../app/services/sync/desired";
 
 export const P = (n: number) => `gid://shopify/Product/${n}`;
 export const C = (n: number) => `gid://shopify/Collection/${n}`;
@@ -39,5 +39,19 @@ export const state = (over: Partial<SyncState> = {}): SyncState => ({
   upsellRules: [],
   syncedProductGids: [],
   ruleDiscountGid: null,
+  ...over,
+});
+
+export const upsell = (id: string, offerNums: number[], over: Partial<UpsellRow> = {}): UpsellRow => ({
+  id,
+  status: "ACTIVE",
+  triggerType: "PRODUCT",
+  triggerGids: [P(1)],
+  offerGids: offerNums.map(P),
+  offerHandles: offerNums.map((n) => `offer-${n}`),
+  layout: "STACKED",
+  maxOffers: 3,
+  hideIfInCart: true,
+  discountPercent: null,
   ...over,
 });

@@ -32,6 +32,7 @@ export interface FunctionInput {
       };
     }[];
   };
+  shop?: { localTime?: { date?: string } | null } | null;
   discountNode: { metafield: { value: string } | null } | null;
 }
 
@@ -48,12 +49,16 @@ interface RawPack {
   bundles?: {
     id: string;
     title?: string;
+    startsAt?: string;
+    endsAt?: string;
     discountType: BundleRule["discountType"];
     discountValue: string;
     components: { productId?: string; collectionId?: string; quantity: number }[];
   }[];
   volume?: {
     id: string;
+    startsAt?: string;
+    endsAt?: string;
     targetType: VolumeRule["targetType"];
     targetIds: string[];
     mode?: VolumeRule["mode"];
@@ -70,12 +75,20 @@ export function cartLinesDiscountsGenerateRun(input: FunctionInput): FunctionRes
   }
 }
 
+/** Date windows are YYYY-MM-DD in the shop timezone, inclusive. Unknown "today" means dated rules are skipped. */
+function inWindow(r: { startsAt?: string; endsAt?: string }, today: string | undefined): boolean {
+  if (!r.startsAt && !r.endsAt) return true;
+  if (!today) return false;
+  return (!r.startsAt || today >= r.startsAt) && (!r.endsAt || today <= r.endsAt);
+}
+
 function run(input: FunctionInput): FunctionResult {
   const raw = input.discountNode?.metafield?.value;
   if (!raw) return NONE;
   const pack = JSON.parse(raw) as RawPack;
   if (pack.schemaVersion !== 1) return NONE;
 
+  const today = input.shop?.localTime?.date;
   const currency = input.cart.cost.subtotalAmount.currencyCode;
   const exp = currencyExponent(currency);
   // Fixed amounts are stored in the shop currency; skip them for carts presented in another currency.
@@ -103,6 +116,7 @@ function run(input: FunctionInput): FunctionResult {
 
   const rules: RulePackInput = {
     bundles: (pack.bundles ?? [])
+      .filter((b) => inWindow(b, today))
       .filter((b) => sameCurrency || b.discountType === "PERCENT")
       .map((b) => ({
         id: b.id,
@@ -111,13 +125,15 @@ function run(input: FunctionInput): FunctionResult {
         discountValue: Number(b.discountValue),
         components: b.components,
       })),
-    volume: (pack.volume ?? []).map((v) => ({
-      id: v.id,
-      targetType: v.targetType,
-      targetIds: v.targetIds,
-      mode: v.mode ?? "GROUP",
-      tiers: v.tiers,
-    })),
+    volume: (pack.volume ?? [])
+      .filter((v) => inWindow(v, today))
+      .map((v) => ({
+        id: v.id,
+        targetType: v.targetType,
+        targetIds: v.targetIds,
+        mode: v.mode ?? "GROUP",
+        tiers: v.tiers,
+      })),
     upsells: (pack.upsells ?? []).map((u) => ({ id: u.id, offerIds: u.offerIds, percentOff: u.percentOff })),
     stackVolumeWithBundles: pack.stackVolumeWithBundles === true,
   };

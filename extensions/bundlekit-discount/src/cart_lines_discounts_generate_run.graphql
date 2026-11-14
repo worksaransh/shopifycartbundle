@@ -34,6 +34,11 @@ query Input($collectionIds: [ID!]) {
       }
     }
   }
+  shop {
+    localTime {
+      date
+    }
+  }
   discountNode {
     metafield(namespace: "$app:bundlekit", key: "fn") {
       value

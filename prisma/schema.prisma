@@ -151,6 +151,10 @@ model UpsellRule {
   triggerGids     String[]
   /// max 3 enforced by zod
   offerGids       String[]
+  /// Product handles of the offers: Liquid looks products up by handle (all_products[handle]).
+  offerHandles    String[]    @default([])
+  /// CAROUSEL or STACKED
+  layout          String      @default("STACKED")
   discountPercent Int?
   maxOffers       Int         @default(3)
   hideIfInCart    Boolean     @default(true)

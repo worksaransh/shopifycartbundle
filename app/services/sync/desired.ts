@@ -6,6 +6,7 @@ import {
   productBundlesSchema,
   productVolumeSchema,
   rulePackSchema,
+  shopUpsellsSchema,
   serialize,
   shopConfigSchema,
   SCHEMA_VERSION,
@@ -37,7 +38,13 @@ export interface VolumeRow {
 export interface UpsellRow {
   id: string;
   status: "ACTIVE" | "PAUSED" | "DRAFT";
+  triggerType: "PRODUCT" | "COLLECTION";
+  triggerGids: string[];
   offerGids: string[];
+  offerHandles: string[];
+  layout: string;
+  maxOffers: number;
+  hideIfInCart: boolean;
   discountPercent: number | null;
 }
 export interface SyncState {
@@ -76,7 +83,8 @@ interface RawItem {
   quantity: number;
 }
 
-const iso = (d: Date | null) => (d ? d.toISOString() : undefined);
+/** Stored as UTC midnight of the chosen calendar date; read back as that same YYYY-MM-DD. */
+const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : undefined);
 
 export function toBundleConfig(b: BundleRow): BundleConfig {
   const items = (b.items ?? []) as RawItem[];
@@ -139,6 +147,31 @@ export function buildDesired(
     ownerId: shopGid,
     key: KEYS.shopConfig,
     value: serialize(shopConfigSchema, config, STOREFRONT_MAX_BYTES, "Shop settings"),
+  });
+
+  const upsellRules = state.upsellRules
+    .filter((u) => u.status === "ACTIVE")
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((u) => ({
+      id: u.id,
+      triggerType: u.triggerType,
+      triggerIds: u.triggerGids,
+      offerIds: u.offerGids,
+      offerHandles: u.offerHandles,
+      discountPercent: u.discountPercent ?? 0,
+      maxOffers: Math.min(u.maxOffers, u.offerGids.length),
+      hideIfInCart: u.hideIfInCart,
+      layout: u.layout === "CAROUSEL" ? "CAROUSEL" : "STACKED",
+    }));
+  metafields.push({
+    ownerId: shopGid,
+    key: KEYS.shopUpsells,
+    value: serialize(
+      shopUpsellsSchema,
+      { schemaVersion: SCHEMA_VERSION, rules: upsellRules },
+      STOREFRONT_MAX_BYTES,
+      "Upsell rules",
+    ),
   });
 
   const perProductBundles = new Map<string, BundleConfig[]>();

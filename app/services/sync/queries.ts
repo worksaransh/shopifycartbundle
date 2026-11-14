@@ -34,7 +34,11 @@ export const COLLECTION_PRODUCTS = `#graphql
 
 export const READ_SHOP_CONFIG = `#graphql
   query ReadShopConfig {
-    shop { id config: metafield(namespace: "${NAMESPACE}", key: "config") { value } }
+    shop {
+      id
+      config: metafield(namespace: "${NAMESPACE}", key: "config") { value }
+      upsells: metafield(namespace: "${NAMESPACE}", key: "upsells") { value }
+    }
   }`;
 
 export const READ_PRODUCT_METAFIELDS = `#graphql

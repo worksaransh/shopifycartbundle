@@ -73,7 +73,8 @@ export function priceBundle(
 const ESC: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ESC[c]);
 
-const money = (minor: number, currency: string, locale: string): string => {
+/** Money via Intl with the cart currency (UX rule 7). Exponent comes from Intl, so JPY/KWD are right. */
+export const formatMoney = (minor: number, currency: string, locale: string): string => {
   const digits =
     new Intl.NumberFormat(locale, { style: "currency", currency }).resolvedOptions().maximumFractionDigits ??
     2;
@@ -99,8 +100,8 @@ export function renderBundleCard(m: BundleCardModel): string {
     (m.badge ? `<span class="bk-badge">${esc(m.badge)}</span>` : "") +
     `<ul class="bk-items">${items}</ul>` +
     `<p class="bk-price"><span class="bk-label">${esc(m.labels.bundlePrice)}</span> ` +
-    `<s class="bk-was">${esc(money(p.originalMinor, m.currency, m.locale))}</s> ` +
-    `<strong class="bk-now">${esc(money(p.bundleMinor, m.currency, m.locale))}</strong> ` +
+    `<s class="bk-was">${esc(formatMoney(p.originalMinor, m.currency, m.locale))}</s> ` +
+    `<strong class="bk-now">${esc(formatMoney(p.bundleMinor, m.currency, m.locale))}</strong> ` +
     `<span class="bk-save">${esc(save)}</span></p>` +
     (m.estimate ? `<p class="bk-note">${esc(m.labels.priceAtCheckout)}</p>` : "") +
     `<button type="button" class="bk-add" data-bk-add>${esc(m.labels.add)}</button>` +

@@ -15,7 +15,12 @@ interface LineSpec {
   type?: string;
 }
 
-function cart(lines: LineSpec[], pack: unknown | null | string, currency = "INR"): FunctionInput {
+function cart(
+  lines: LineSpec[],
+  pack: unknown | null | string,
+  currency = "INR",
+  today: string | null = "2026-11-14",
+): FunctionInput {
   const colls = [...new Set(lines.flatMap((l) => l.inCollections ?? []))];
   return {
     cart: {
@@ -42,6 +47,7 @@ function cart(lines: LineSpec[], pack: unknown | null | string, currency = "INR"
               },
       })),
     },
+    shop: today === null ? null : { localTime: { date: today } },
     discountNode: {
       metafield: pack === null ? null : { value: typeof pack === "string" ? pack : JSON.stringify(pack) },
     },
@@ -356,5 +362,37 @@ describe("currency and safety", () => {
     const r = out(cart(lines, pack({ bundles: [pair()], volume: [vol([P(1)])] })));
     expect(Date.now() - started).toBeLessThan(500);
     expect(r.c.map((x) => x.line)).toEqual([L("1"), L("2")]);
+  });
+});
+
+describe("date windows (shop timezone, inclusive)", () => {
+  const lines = [{ id: "1", product: 1, qty: 2 }];
+  const dated = (startsAt?: string, endsAt?: string) =>
+    pack({ volume: [{ ...vol([P(1)]), startsAt, endsAt }] });
+  const applies = (p: unknown, today: string | null) => out(cart(lines, p, "INR", today)).c.length > 0;
+  it("21. before start: no; on start: yes; on end: yes; after end: no", () => {
+    const p = dated("2026-11-14", "2026-11-20");
+    expect(applies(p, "2026-11-13")).toBe(false);
+    expect(applies(p, "2026-11-14")).toBe(true);
+    expect(applies(p, "2026-11-20")).toBe(true);
+    expect(applies(p, "2026-11-21")).toBe(false);
+  });
+  it("22. open-ended windows and rules without dates", () => {
+    expect(applies(dated("2026-11-01"), "2027-05-01")).toBe(true);
+    expect(applies(dated(undefined, "2026-12-31"), "2026-01-01")).toBe(true);
+    expect(applies(dated(), "2026-11-14")).toBe(true);
+  });
+  it("23. unknown shop date: dated rules are skipped (fail safe), undated rules still apply", () => {
+    expect(applies(dated("2026-11-01", "2026-12-01"), null)).toBe(false);
+    expect(applies(dated(), null)).toBe(true);
+  });
+  it("24. bundles honour windows too", () => {
+    const b = pair("PERCENT", "10", { startsAt: "2026-12-01" });
+    const l = [
+      { id: "1", product: 1, bundle: "b1" },
+      { id: "2", product: 2, bundle: "b1" },
+    ];
+    expect(out(cart(l, pack({ bundles: [b] }), "INR", "2026-11-14")).c).toEqual([]);
+    expect(out(cart(l, pack({ bundles: [b] }), "INR", "2026-12-01")).c).toHaveLength(2);
   });
 });

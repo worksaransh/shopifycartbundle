@@ -5,7 +5,7 @@ import { reconcileShop } from "../app/services/sync/reconcile";
 import { runSync, type SyncRepo } from "../app/services/sync/run";
 import { syncShop } from "../app/services/sync/sync";
 import { FakeShopify } from "./helpers/fake-shopify";
-import { bundle, C, P, state, volume } from "./helpers/state";
+import { bundle, C, P, state, upsell, volume } from "./helpers/state";
 
 const client = (fake: FakeShopify) => new GqlClient(fake, { sleep: async () => {} });
 const packOf = (fake: FakeShopify, gid: string) => parseStored(rulePackSchema, fake.store.get(`${gid}|fn`));
@@ -92,9 +92,9 @@ describe("rule pack discount node", () => {
       volumeRules: [volume("v1", [C(1)], { targetType: "COLLECTION" })],
       bundles: [bundle("b1", [], { type: "MIX_MATCH", items: [{ collectionGid: C(2), quantity: 3 }] })],
       upsellRules: [
-        { id: "u1", status: "ACTIVE", offerGids: [P(7)], discountPercent: 10 },
-        { id: "u2", status: "ACTIVE", offerGids: [P(8)], discountPercent: null },
-        { id: "u3", status: "PAUSED", offerGids: [P(9)], discountPercent: 20 },
+        upsell("u1", [7], { discountPercent: 10 }),
+        upsell("u2", [8]),
+        upsell("u3", [9], { status: "PAUSED", discountPercent: 20 }),
       ],
     });
     fake.collections.set(C(2), [P(60)]);
@@ -148,5 +148,29 @@ describe("rule pack reconcile and persistence", () => {
     };
     await runSync("dev.myshopify.com", { repo, admin: async () => fake });
     expect(saved).toBe("gid://shopify/DiscountAutomaticNode/1");
+  });
+});
+
+describe("storefront upsell metafield", () => {
+  it("publishes ACTIVE upsell rules (with handles) to the shop, including undiscounted ones", async () => {
+    const fake = new FakeShopify();
+    await syncShop(
+      client(fake),
+      state({
+        upsellRules: [
+          upsell("u1", [7, 8], { discountPercent: 10, maxOffers: 3 }),
+          upsell("u2", [9], { status: "PAUSED" }),
+        ],
+      }),
+    );
+    const raw = JSON.parse(fake.store.get(`${fake.shopGid}|upsells`)!);
+    expect(raw.rules).toHaveLength(1);
+    expect(raw.rules[0]).toMatchObject({
+      id: "u1",
+      offerHandles: ["offer-7", "offer-8"],
+      discountPercent: 10,
+      maxOffers: 2,
+      layout: "STACKED",
+    });
   });
 });

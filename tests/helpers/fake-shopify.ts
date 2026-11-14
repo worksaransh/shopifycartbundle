@@ -115,7 +115,12 @@ export class FakeShopify implements AdminLike {
 
     if (query.includes("query ReadShopConfig")) {
       const value = this.store.get(`${this.shopGid}|config`);
-      return this.json({ data: { shop: { id: this.shopGid, config: value ? { value } : null } } });
+      const up = this.store.get(`${this.shopGid}|upsells`);
+      return this.json({
+        data: {
+          shop: { id: this.shopGid, config: value ? { value } : null, upsells: up ? { value: up } : null },
+        },
+      });
     }
 
     if (query.includes("query ReadProductMetafields")) {

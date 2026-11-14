@@ -21,6 +21,7 @@ export const KEYS = {
   shopConfig: "config",
   productBundles: "bundles",
   productVolume: "volume",
+  shopUpsells: "upsells",
   functionConfig: "fn",
 } as const;
 
@@ -31,7 +32,8 @@ export const MAX_SYNC_PRODUCTS = 5_000;
 
 const gid = z.string().regex(/^gid:\/\/shopify\/[A-Za-z]+\/\d+$/, "must be a Shopify GID");
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "must be a #rrggbb colour");
-const isoDate = z.string().datetime({ offset: true });
+/** Calendar date in the SHOP timezone (YYYY-MM-DD). Compared with Function input shop.localTime.date. */
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD");
 const minorString = z.string().regex(/^\d{1,15}$/, "must be integer minor units");
 
 export const componentSchema = z
@@ -100,10 +102,31 @@ export const shopConfigSchema = z.object({
     .object({ accent: hex, text: hex, background: hex })
     .default({ accent: "#1a6b4f", text: "#202223", background: "#ffffff" }),
   locale: z.string().min(2).max(10).default("en"),
+  /** Generic-adapter fallback: CSS selector of the merchant's cart container (Settings). */
+  cartSelector: z.string().max(120).optional(),
   /** Storefront strings keyed by id; {amount} placeholder allowed in shipping messages. */
   strings: z.record(z.string().max(60), z.string().max(200)).default({}),
 });
 export type ShopConfig = z.infer<typeof shopConfigSchema>;
+
+const handle = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be a product handle");
+
+/** Storefront view of an upsell rule (shop metafield `upsells`). Offer product DATA is rendered by Liquid, not stored here. */
+export const upsellStorefrontSchema = z.object({
+  id: z.string().min(1).max(64),
+  triggerType: z.enum(["PRODUCT", "COLLECTION"]),
+  triggerIds: z.array(gid).min(1).max(20),
+  offerIds: z.array(gid).min(1).max(3),
+  offerHandles: z.array(handle).min(1).max(3),
+  discountPercent: z.number().int().min(0).max(90).default(0),
+  maxOffers: z.number().int().min(1).max(3).default(3),
+  hideIfInCart: z.boolean().default(true),
+  layout: z.enum(["CAROUSEL", "STACKED"]).default("STACKED"),
+});
+export const shopUpsellsSchema = z.object({
+  schemaVersion: z.literal(SCHEMA_VERSION),
+  rules: z.array(upsellStorefrontSchema).max(20),
+});
 
 export const productBundlesSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),

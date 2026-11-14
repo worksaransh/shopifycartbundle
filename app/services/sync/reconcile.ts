@@ -65,10 +65,11 @@ export async function reconcileShop(
   const want = new Map(wanted.map((m) => [`${m.ownerId}|${m.key}`, m]));
 
   const actual = new Map<string, string | null>();
-  const shop = await client.request<{ shop: { id: string; config: { value: string } | null } }>(
-    READ_SHOP_CONFIG,
-  );
+  const shop = await client.request<{
+    shop: { id: string; config: { value: string } | null; upsells: { value: string } | null };
+  }>(READ_SHOP_CONFIG);
   actual.set(`${shopGid}|${KEYS.shopConfig}`, shop.shop.config?.value ?? null);
+  actual.set(`${shopGid}|${KEYS.shopUpsells}`, shop.shop.upsells?.value ?? null);
 
   if (nodeGid) {
     const node = await client.request<{
