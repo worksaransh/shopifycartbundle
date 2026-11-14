@@ -41,12 +41,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   throw redirect("/app/bundles");
 };
 
-type PickedItem = { gid: string; title: string; imageUrl?: string; priceMinor: number; quantity: number };
+type PickedItem = {
+  gid: string;
+  handle?: string;
+  title: string;
+  imageUrl?: string;
+  priceMinor: number;
+  quantity: number;
+};
 type DiscountType = "PERCENT" | "AMOUNT" | "FIXED_PRICE";
 
 /** Shape of what shopify.resourcePicker returns that we use. */
 interface PickerResource {
   id: string;
+  handle?: string;
   title: string;
   images?: { originalSrc?: string }[];
   image?: { originalSrc?: string } | null;
@@ -108,8 +116,8 @@ export default function NewBundle() {
     discountValue: Number.isFinite(discountValue) ? discountValue : 0,
     items: items.map((i) =>
       type === "FIXED"
-        ? { productGid: i.gid, quantity: i.quantity }
-        : { collectionGid: i.gid, quantity: i.quantity },
+        ? { productGid: i.gid, ...(i.handle ? { handle: i.handle } : {}), quantity: i.quantity }
+        : { collectionGid: i.gid, ...(i.handle ? { handle: i.handle } : {}), quantity: i.quantity },
     ),
   };
   const parsed = bundleInputSchema.safeParse(input);
@@ -139,6 +147,7 @@ export default function NewBundle() {
       }
       return {
         gid: r.id,
+        handle: r.handle,
         title: r.title,
         imageUrl: r.images?.[0]?.originalSrc ?? r.image?.originalSrc,
         priceMinor,

@@ -1,0 +1,6 @@
+# Theme app extension: two app blocks (Bundle, Volume tiers) and one app embed (cart bar + upsells).
+# Docs: https://shopify.dev/docs/apps/build/online-store/theme-app-extensions
+# NOT yet deployed (no Shopify CLI auth in the authoring environment). First run: shopify app dev, then
+# open the theme editor, add the blocks on a product template, and enable the embed.
+name = "BundleKit storefront"
+type = "theme"

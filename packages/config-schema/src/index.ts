@@ -40,6 +40,12 @@ export const componentSchema = z
   .object({
     productId: gid.optional(),
     collectionId: gid.optional(),
+    /** Product or collection handle. Liquid looks things up by handle; the Function never needs it. */
+    handle: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]*$/)
+      .max(255)
+      .optional(),
     quantity: z.number().int().min(1).max(99),
   })
   .refine((c) => !!c.productId !== !!c.collectionId, "exactly one of productId or collectionId");
@@ -114,8 +120,9 @@ const handle = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be a product handl
 /** Storefront view of an upsell rule (shop metafield `upsells`). Offer product DATA is rendered by Liquid, not stored here. */
 export const upsellStorefrontSchema = z.object({
   id: z.string().min(1).max(64),
-  triggerType: z.enum(["PRODUCT", "COLLECTION"]),
-  triggerIds: z.array(gid).min(1).max(20),
+  /** Product ids that trigger the rule. Collection triggers are expanded to products at sync time because
+   * /cart.js has no collection data. Capped at 200 per rule. */
+  triggerProductIds: z.array(gid).min(1).max(200),
   offerIds: z.array(gid).min(1).max(3),
   offerHandles: z.array(handle).min(1).max(3),
   discountPercent: z.number().int().min(0).max(90).default(0),

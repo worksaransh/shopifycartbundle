@@ -28,6 +28,7 @@ export async function createBundle(domain: string, raw: unknown): Promise<SaveRe
       discountValue: String(b.discountValue),
       items: b.items.map((i) => ({
         ...(i.productGid ? { productGid: i.productGid } : { collectionGid: i.collectionGid }),
+        ...(i.handle ? { handle: i.handle } : {}),
         quantity: i.quantity,
       })),
     },

@@ -1,0 +1,19 @@
+{
+  "bundle.price": "Bundle price",
+  "bundle.save": "Save {percent}%",
+  "bundle.add": "Add bundle to cart",
+  "bundle.added": "Bundle added to cart",
+  "bundle.soldOut": "One item in this bundle is sold out",
+  "bundle.error": "Could not add the bundle. Try again.",
+  "price.atCheckout": "Price at checkout",
+  "volume.heading": "Buy more, save more",
+  "volume.row": "Buy {qty}+ and save {percent}%",
+  "volume.selected": "{qty} selected",
+  "upsell.heading": "Add to your order",
+  "upsell.add": "Add",
+  "upsell.added": "{title} added to your cart",
+  "upsell.error": "Could not add {title}. Try again.",
+  "upsell.save": "Save {percent}%",
+  "shipping.progress": "Add {amount} more for free shipping",
+  "shipping.success": "You've unlocked free shipping"
+}

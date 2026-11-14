@@ -7,3 +7,4 @@ export * from "./volume";
 export * from "./shipping";
 export * from "./currency";
 export * from "./cart";
+export * from "./upsell";

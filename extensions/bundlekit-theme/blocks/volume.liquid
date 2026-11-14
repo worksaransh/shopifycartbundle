@@ -1,0 +1,65 @@
+{%- comment -%}
+  Volume tier table (product page). Server-rendered from the product metafield; bundlekit-volume.js only
+  highlights the active tier and lets shoppers tap a row. Renders NOTHING if config is missing, the kill switch is on,
+  or no rule is active today (shop time zone, inclusive).
+{%- endcomment -%}
+{%- liquid
+  assign cfg = shop.metafields['$app:bundlekit'].config.value
+  assign data = product.metafields['$app:bundlekit'].volume.value
+  assign today = 'now' | date: '%Y%m%d' | plus: 0
+  assign shown = false
+-%}
+{%- if cfg.killSwitch != true and data.rules != blank -%}
+  {%- for rule in data.rules -%}
+    {%- liquid
+      assign inactive = false
+      if rule.startsAt != blank
+        assign s = rule.startsAt | remove: '-' | plus: 0
+        if today < s
+          assign inactive = true
+        endif
+      endif
+      if rule.endsAt != blank
+        assign e = rule.endsAt | remove: '-' | plus: 0
+        if today > e
+          assign inactive = true
+        endif
+      endif
+    -%}
+    {%- if inactive or shown -%}{%- continue -%}{%- endif -%}
+    {%- assign shown = true -%}
+    <div class="bk-vol" data-bk-volume data-beacon="/apps/bundlekit/event" {% if block.settings.accent != blank %}style="--color-button:{{ block.settings.accent }}"{% endif %} {{ block.shopify_attributes }}>
+      <h3 class="bk-vol-h">
+        {%- assign heading = block.settings.heading | default: cfg.strings['volume.heading'] -%}
+        {%- if heading != blank -%}{{ heading }}{%- else -%}{{ 'volume.heading' | t }}{%- endif -%}
+      </h3>
+      <ul class="bk-vol-list">
+        {%- for tier in rule.tiers -%}
+          <li>
+            <button type="button" class="bk-tier" data-bk-tier data-min="{{ tier.minQty }}" data-percent="{{ tier.percentOff }}" aria-pressed="false">
+              {%- assign row = cfg.strings['volume.row'] -%}
+              {%- if row == blank -%}{%- assign row = 'volume.row' | t -%}{%- endif -%}
+              <span>{{ row | replace: '{qty}', tier.minQty | replace: '{percent}', tier.percentOff }}</span>
+              <span class="bk-tag" data-bk-selected></span>
+            </button>
+          </li>
+        {%- endfor -%}
+      </ul>
+      <script type="application/json" data-bk-strings>{{ cfg.strings | json }}</script>
+    </div>
+  {%- endfor -%}
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Volume tiers",
+  "target": "section",
+  "stylesheet": "bundlekit.css",
+  "javascript": "bundlekit-volume.js",
+  "enabled_on": { "templates": ["product"] },
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "info": "Leave empty to use the text from the BundleKit settings page." },
+    { "type": "color", "id": "accent", "label": "Accent colour", "info": "Leave empty to use your theme's button colour." }
+  ]
+}
+{% endschema %}

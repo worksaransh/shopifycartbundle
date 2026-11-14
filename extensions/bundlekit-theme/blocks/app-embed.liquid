@@ -1,0 +1,54 @@
+{%- comment -%}
+  App embed: free-shipping bar and cart upsells in the cart drawer or cart page. Offered products are rendered here
+  from their handles (never fetched from our server). If the kill switch is on or nothing is configured, this outputs
+  nothing and loads nothing heavy. Limit to verify: Liquid all_products[handle] is capped per page (we render at most 9).
+{%- endcomment -%}
+{%- liquid
+  assign cfg = shop.metafields['$app:bundlekit'].config.value
+  assign rules = shop.metafields['$app:bundlekit'].upsells.value.rules
+-%}
+{%- if cfg.killSwitch != true and cfg != blank -%}
+  <script type="application/json" id="bk-cart-config">
+    {
+      "config": {{ cfg | json }},
+      "locale": {{ request.locale.iso_code | json }},
+      "beacon": "/apps/bundlekit/event",
+      "rules": {% if rules %}{{ rules | json }}{% else %}[]{% endif %},
+      "offers": {
+        {%- assign first = true -%}
+        {%- assign count = 0 -%}
+        {%- for rule in rules -%}
+          {%- for h in rule.offerHandles -%}
+            {%- if count >= 9 -%}{%- break -%}{%- endif -%}
+            {%- assign p = all_products[h] -%}
+            {%- if p != blank and p.empty == false -%}
+              {%- unless first -%},{%- endunless -%}
+              {%- assign first = false -%}
+              {%- assign count = count | plus: 1 -%}
+              "gid://shopify/Product/{{ p.id }}": {
+                "id": "gid://shopify/Product/{{ p.id }}",
+                "title": {{ p.title | json }},
+                "image": {{ p.featured_image | image_url: width: 112 | json }},
+                "variants": [
+                  {%- for v in p.variants -%}
+                    {"id": {{ v.id }}, "title": {{ v.title | json }}, "price": {{ v.price }}, "available": {{ v.available }}}{%- unless forloop.last -%},{%- endunless -%}
+                  {%- endfor -%}
+                ]
+              }
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endfor -%}
+      }
+    }
+  </script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "BundleKit cart",
+  "target": "body",
+  "stylesheet": "bundlekit.css",
+  "javascript": "bundlekit-cart.js",
+  "settings": []
+}
+{% endschema %}

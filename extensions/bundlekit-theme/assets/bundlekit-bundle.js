@@ -1,0 +1,458 @@
+"use strict";
+(() => {
+  var se = Object.defineProperty;
+  var ae = (e, t, n) =>
+    t in e ? se(e, t, { enumerable: !0, configurable: !0, writable: !0, value: n }) : (e[t] = n);
+  var F = (e, t, n) => ae(e, typeof t != "symbol" ? t + "" : t, n);
+  function j(e, t = {}) {
+    var g, y;
+    let n =
+        (g = t.send) != null
+          ? g
+          : (o, s) =>
+              typeof navigator != "undefined" && navigator.sendBeacon ? navigator.sendBeacon(o, s) : !1,
+      r = (y = t.schedule) != null ? y : (o, s) => setTimeout(o, s),
+      i = new Map(),
+      a = new Set(),
+      u = null,
+      p = () => {
+        if (((u = null), !e || i.size === 0)) {
+          i.clear();
+          return;
+        }
+        let o = [...i.values()].slice(0, 20);
+        i.clear();
+        try {
+          n(e, new Blob([JSON.stringify({ events: o })], { type: "application/json" }));
+        } catch {}
+      },
+      d = (o, s) => {
+        if (!e) return;
+        let c = `${o}|${s != null ? s : ""}`,
+          b = i.get(c);
+        (b ? b.n++ : i.set(c, { t: o, ...(s ? { r: s.slice(0, 64) } : {}), n: 1 }),
+          i.size >= 20 ? p() : u === null && (u = r(p, 3e3)));
+      };
+    return (
+      typeof document != "undefined" &&
+        (document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && p()),
+        window.addEventListener("pagehide", p)),
+      {
+        track: d,
+        once(o, s) {
+          let c = `${o}|${s != null ? s : ""}`;
+          a.has(c) || (a.add(c), d(o, s));
+        },
+        flush: p,
+      }
+    );
+  }
+  var O = Object.freeze({ totalMinor: 0, lineDiscounts: [] });
+  function h(e) {
+    return typeof e == "number" && Number.isSafeInteger(e) && e >= 0;
+  }
+  function q(e, t, n) {
+    if (!(h(e) && h(t) && h(n)) || n === 0) throw new RangeError("mulDivRoundHalfUp: bad operands");
+    let r = 2 * e * t + n;
+    return Number.isSafeInteger(r)
+      ? Math.floor(r / (2 * n))
+      : Number((BigInt(2) * BigInt(e) * BigInt(t) + BigInt(n)) / (BigInt(2) * BigInt(n)));
+  }
+  function w(e, t) {
+    if (!Number.isInteger(t) || t < 0 || t > 100) throw new RangeError("percent must be an integer 0-100");
+    return q(e, t, 100);
+  }
+  function N(e, t) {
+    if (!h(e) || !t.every(h)) throw new RangeError("allocate: bad operands");
+    let n = t.reduce((a, u) => a + u, 0);
+    if (e > n) throw new RangeError("allocate: total exceeds capacity");
+    if (e === 0 || t.length === 0) return t.map(() => 0);
+    let r = t.map((a) => Math.min(a, q(e, a, n))),
+      i = e - r.reduce((a, u) => a + u, 0);
+    for (let a = t.length - 1; a >= 0 && i !== 0; a--)
+      if (i > 0) {
+        let u = Math.min(i, t[a] - r[a]);
+        ((r[a] += u), (i -= u));
+      } else {
+        let u = Math.min(-i, r[a]);
+        ((r[a] -= u), (i += u));
+      }
+    return r;
+  }
+  function S(e) {
+    return (
+      !!e.productId &&
+      !!e.variantId &&
+      Number.isSafeInteger(e.quantity) &&
+      e.quantity > 0 &&
+      Number.isSafeInteger(e.unitPriceMinor) &&
+      e.unitPriceMinor >= 0
+    );
+  }
+  var B = { ...O, instances: 0, coveredUnits: {} };
+  function ce(e, t) {
+    var n;
+    return e.productId
+      ? t.productId === e.productId
+      : e.collectionId
+        ? !!((n = t.collectionIds) != null && n.includes(e.collectionId))
+        : !1;
+  }
+  function ue(e) {
+    return e.components.length === 0 ||
+      !e.components.every(
+        (t) => Number.isInteger(t.quantity) && t.quantity > 0 && !!(t.productId || t.collectionId),
+      ) ||
+      !Number.isSafeInteger(e.discountValue) ||
+      e.discountValue < 0
+      ? !1
+      : e.discountType === "PERCENT"
+        ? e.discountValue >= 1 && e.discountValue <= 90
+        : !0;
+  }
+  function P(e, t) {
+    if (!ue(e)) return B;
+    let n = t.filter((o) => o.bundleId === e.id && S(o));
+    if (n.length === 0) return B;
+    let r = e.components.map(() => []);
+    for (let o of n) {
+      let s = e.components.findIndex((c) => ce(c, o));
+      s >= 0 && r[s].push(o);
+    }
+    let i = Math.min(
+      ...e.components.map((o, s) => Math.floor(r[s].reduce((c, b) => c + b.quantity, 0) / o.quantity)),
+    );
+    if (!Number.isFinite(i) || i < 1) return B;
+    let a = [];
+    e.components.forEach((o, s) => {
+      let c = o.quantity * i;
+      for (let b of r[s]) {
+        if (c === 0) break;
+        let E = Math.min(b.quantity, c);
+        (a.push({ line: b, units: E }), (c -= E));
+      }
+    });
+    let u = a.map(({ line: o, units: s }) => o.unitPriceMinor * s),
+      p = u.reduce((o, s) => o + s, 0),
+      d;
+    switch (e.discountType) {
+      case "PERCENT":
+        d = w(p, e.discountValue);
+        break;
+      case "AMOUNT":
+        d = Math.min(e.discountValue * i, p);
+        break;
+      case "FIXED_PRICE":
+        d = Math.max(0, p - e.discountValue * i);
+        break;
+    }
+    if (!Number.isSafeInteger(d) || d <= 0) return { ...B, instances: i, coveredUnits: X(a) };
+    let g = N(d, u),
+      y = new Map();
+    return (
+      a.forEach(({ line: o }, s) => {
+        var c;
+        return y.set(o.id, ((c = y.get(o.id)) != null ? c : 0) + g[s]);
+      }),
+      {
+        totalMinor: d,
+        lineDiscounts: [...y].filter(([, o]) => o > 0).map(([o, s]) => ({ lineId: o, amountMinor: s })),
+        instances: i,
+        coveredUnits: X(a),
+      }
+    );
+  }
+  function X(e) {
+    var n;
+    let t = {};
+    for (let { line: r, units: i } of e) t[r.id] = ((n = t[r.id]) != null ? n : 0) + i;
+    return t;
+  }
+  var A = (e, t, n) => {
+    var i;
+    let r =
+      (i = new Intl.NumberFormat(n, { style: "currency", currency: t }).resolvedOptions()
+        .maximumFractionDigits) != null
+        ? i
+        : 2;
+    return new Intl.NumberFormat(n, { style: "currency", currency: t }).format(e / 10 ** r);
+  };
+  var Y = `
+.bk-card{--bk-accent:var(--color-button,#1a6b4f);--bk-text:var(--color-foreground,#202223);--bk-bg:var(--color-background,#fff);
+  color:var(--bk-text);background:var(--bk-bg);border:1px solid color-mix(in srgb,var(--bk-text) 20%,transparent);
+  border-radius:8px;padding-inline:16px;padding-block:16px;max-inline-size:100%;box-sizing:border-box;font:inherit}
+.bk-title{margin-block:0 8px;font-size:1.1em}
+.bk-badge{display:inline-block;padding-inline:8px;padding-block:2px;border-radius:4px;background:var(--bk-accent);color:#fff;font-size:.85em}
+.bk-items{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.bk-item{display:flex;align-items:center;gap:12px}
+.bk-img{inline-size:64px;block-size:64px;object-fit:cover;border-radius:4px;background:color-mix(in srgb,var(--bk-text) 8%,transparent);flex:none}
+.bk-price{margin-block:12px 0}
+.bk-was{opacity:.75}
+.bk-now{font-size:1.2em}
+.bk-save{font-weight:600}
+.bk-note{margin-block:4px 0;font-size:.85em;opacity:.8}
+.bk-add{margin-block-start:12px;min-block-size:44px;inline-size:100%;border:0;border-radius:6px;background:var(--bk-accent);color:#fff;font:inherit;cursor:pointer}
+.bk-add:focus-visible{outline:3px solid var(--bk-text);outline-offset:2px}
+.bk-add[disabled]{opacity:.6;cursor:not-allowed}
+@media (prefers-reduced-motion:reduce){.bk-card *{transition:none!important;animation:none!important}}
+`.trim();
+  var J = {
+      "bundle.price": "Bundle price",
+      "bundle.save": "Save {percent}%",
+      "bundle.add": "Add bundle to cart",
+      "bundle.added": "Bundle added to cart",
+      "bundle.soldOut": "One item in this bundle is sold out",
+      "bundle.error": "Could not add the bundle. Try again.",
+      "price.atCheckout": "Price at checkout",
+      "volume.heading": "Buy more, save more",
+      "volume.row": "Buy {qty}+ and save {percent}%",
+      "volume.selected": "{qty} selected",
+      "upsell.heading": "Add to your order",
+      "upsell.add": "Add",
+      "upsell.added": "{title} added to your cart",
+      "upsell.error": "Could not add {title}. Try again.",
+      "upsell.save": "Save {percent}%",
+      "shipping.progress": "Add {amount} more for free shipping",
+      "shipping.success": "You've unlocked free shipping",
+    },
+    de = Object.keys(J);
+  function K(e) {
+    let t = { ...J };
+    for (let n of de) {
+      let r = e == null ? void 0 : e[n];
+      typeof r == "string" && r.trim() && (t[n] = r);
+    }
+    return t;
+  }
+  function G(e, t = {}) {
+    return e.replace(/\{(\w+)\}/g, (n, r) => (r in t ? String(t[r]) : n));
+  }
+  var rt = `${Y}
+.bk-sr{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.bk-vol,.bk-cart{--bk-accent:var(--color-button,#1a6b4f);--bk-text:var(--color-foreground,#202223);--bk-bg:var(--color-background,#fff);color:var(--bk-text);font:inherit;box-sizing:border-box}
+.bk-vol-h{margin-block:0 8px;font-size:1.1em}
+.bk-vol-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.bk-tier{display:flex;justify-content:space-between;align-items:center;inline-size:100%;min-block-size:44px;padding-inline:12px;padding-block:8px;border:1px solid color-mix(in srgb,var(--bk-text) 25%,transparent);border-radius:6px;background:var(--bk-bg);color:var(--bk-text);font:inherit;cursor:pointer;text-align:start}
+.bk-tier:focus-visible,.bk-oadd:focus-visible,.bk-var:focus-visible{outline:3px solid var(--bk-text);outline-offset:2px}
+.bk-tier.bk-active{border-color:var(--bk-accent);box-shadow:inset 0 0 0 2px var(--bk-accent);font-weight:600}
+.bk-tag{font-size:.85em}
+.bk-ship{padding-block:8px}
+.bk-ship-text{margin-block:0 6px;font-size:.95em}
+.bk-bar{block-size:8px;border-radius:4px;background:color-mix(in srgb,var(--bk-text) 15%,transparent);overflow:hidden}
+.bk-bar>span{display:block;block-size:100%;background:var(--bk-accent)}
+.bk-motion .bk-bar>span{transition:inline-size .3s ease}
+.bk-done .bk-ship-text{font-weight:600}
+.bk-offers{padding-block:8px}
+.bk-oh{margin-block:0 8px;font-weight:600}
+.bk-olist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.bk-olist.bk-carousel{grid-auto-flow:column;grid-auto-columns:minmax(240px,80%);overflow-x:auto;scroll-snap-type:x proximity}
+.bk-carousel .bk-offer{scroll-snap-align:start}
+.bk-offer{display:flex;gap:12px;align-items:center;padding:8px;border:1px solid color-mix(in srgb,var(--bk-text) 20%,transparent);border-radius:6px;background:var(--bk-bg)}
+.bk-oimg{inline-size:56px;block-size:56px;object-fit:cover;border-radius:4px;flex:none}
+.bk-obody{flex:1;display:grid;gap:2px;min-inline-size:0}
+.bk-otitle{font-weight:600;overflow-wrap:anywhere}
+.bk-osave{font-size:.85em}
+.bk-var{min-block-size:44px;max-inline-size:100%;font:inherit}
+.bk-oadd{min-block-size:44px;min-inline-size:44px;padding-inline:16px;border:0;border-radius:6px;background:var(--bk-accent);color:#fff;font:inherit;cursor:pointer}
+.bk-oadd[disabled]{opacity:.6;cursor:not-allowed}
+.bk-note{margin-block:4px 0}
+.bk-mix{display:grid;gap:8px;margin-block:8px;padding:0;list-style:none}
+.bk-mix input[type=number]{min-block-size:44px;inline-size:72px;font:inherit}
+`;
+  var R = class extends Error {
+    constructor(n, r) {
+      super(n);
+      F(this, "status", r);
+    }
+  };
+  async function Q(e, t = fetch) {
+    let n = await t("/cart/add.js", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ items: e }),
+    });
+    if (!n.ok) {
+      let r = `HTTP ${n.status}`;
+      try {
+        let i = await n.json();
+        r = i.description || i.message || r;
+      } catch {}
+      throw new R(r, n.status);
+    }
+  }
+  function W(e = document) {
+    for (let t of ["bundlekit:cart-updated", "cart:refresh", "cart:updated"])
+      e.dispatchEvent(new CustomEvent(t, { bubbles: !0 }));
+  }
+  function L(e) {
+    try {
+      e();
+    } catch {}
+  }
+  var pe =
+    "position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap";
+  function Z(e) {
+    let t = e.querySelector("[data-bk-status]");
+    (t ||
+      ((t = e.ownerDocument.createElement("div")),
+      t.setAttribute("data-bk-status", ""),
+      (t.style.cssText = pe),
+      e.appendChild(t)),
+      t.setAttribute("role", "status"),
+      t.setAttribute("aria-live", "polite"),
+      t.setAttribute("tabindex", "-1"));
+    let n = t;
+    return (r, i) => {
+      ((n.textContent = ""),
+        setTimeout(() => {
+          ((n.textContent = r), i != null && i.focus && n.focus());
+        }, 20));
+    };
+  }
+  function ee(e) {
+    try {
+      return e != null && e.textContent ? JSON.parse(e.textContent) : null;
+    } catch {
+      return null;
+    }
+  }
+  function te(e) {
+    let t = e.querySelector("[data-bk-variant]");
+    if (!t) return null;
+    let n = t instanceof HTMLSelectElement ? t.selectedOptions[0] : t;
+    if (!n) return null;
+    let r = t.value,
+      i = Number(n.dataset.price);
+    return !r || !Number.isFinite(i)
+      ? null
+      : { variantId: r, price: i, available: n.dataset.available !== "false" };
+  }
+  function fe(e) {
+    let t = [];
+    return (
+      e.dataset.type === "MIX_MATCH"
+        ? e.querySelectorAll("[data-bk-pick]").forEach((n) => {
+            var a, u;
+            let r = Number((a = n.querySelector("[data-bk-qty]")) == null ? void 0 : a.value) || 0,
+              i = te(n);
+            r > 0 &&
+              i &&
+              t.push({
+                productId: (u = n.dataset.productId) != null ? u : "",
+                variantId: i.variantId,
+                quantity: r,
+                unitPriceMinor: i.price,
+                available: i.available,
+              });
+          })
+        : e.querySelectorAll("[data-bk-item]").forEach((n) => {
+            var i;
+            let r = te(n);
+            r &&
+              t.push({
+                productId: (i = n.dataset.productId) != null ? i : "",
+                variantId: r.variantId,
+                quantity: Number(n.dataset.quantity) || 1,
+                unitPriceMinor: r.price,
+                available: r.available,
+              });
+          }),
+      t
+    );
+  }
+  function be(e, t = {}) {
+    L(() => {
+      var U, V, $, _;
+      let n = e.dataset.bundleId,
+        r = e.dataset.type === "MIX_MATCH",
+        i = Number(e.dataset.need) || 0,
+        a = e.dataset.discountType,
+        u = Number(e.dataset.discountValue),
+        p = (U = e.dataset.currency) != null ? U : "USD",
+        d = (V = e.dataset.locale) != null ? V : "en";
+      if (!n || !a || !Number.isFinite(u)) return;
+      let g = K(ee(e.querySelector("script[data-bk-strings]"))),
+        y = Z(e),
+        o = (f) => e.querySelector(f),
+        s = ($ = t.add) != null ? $ : Q,
+        c = o("[data-bk-add]"),
+        b = o("[data-bk-note]");
+      if (!c) return;
+      let E = e.querySelectorAll("[data-bk-item]").length;
+      function I() {
+        var H;
+        let f = fe(e),
+          k = f.some((l) => !l.available) || (!r && f.length < E),
+          M = f.reduce((l, x) => l + x.quantity, 0),
+          m = o("[data-bk-count]");
+        m && (m.textContent = `${M}/${i}`);
+        let ie = r
+            ? [{ collectionId: (H = e.dataset.collectionId) != null ? H : "c", quantity: i }]
+            : f.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+          z = f.map((l, x) => {
+            var T;
+            return {
+              id: String(x),
+              productId: l.productId,
+              variantId: l.variantId,
+              quantity: l.quantity,
+              unitPriceMinor: l.unitPriceMinor,
+              bundleId: n,
+              collectionIds: r ? [(T = e.dataset.collectionId) != null ? T : "c"] : void 0,
+            };
+          }),
+          C = z.reduce((l, x) => l + x.quantity * x.unitPriceMinor, 0),
+          v = P({ id: n, discountType: a, discountValue: u, components: ie }, z).totalMinor,
+          D = (l, x) => {
+            let T = o(l);
+            T && (T.textContent = x);
+          };
+        f.length > 0 &&
+          (D("[data-bk-original]", A(C, p, d)),
+          D("[data-bk-now]", A(C - v, p, d)),
+          D("[data-bk-save]", v > 0 ? G(g["bundle.save"], { percent: Math.round((v * 100) / C) }) : ""));
+        let oe = r ? M === i : !k;
+        return (
+          (c.disabled = k || !oe || v <= 0),
+          b && (b.textContent = k ? g["bundle.soldOut"] : ""),
+          r || (e.hidden = v <= 0 && !k),
+          { rows: f, saved: v }
+        );
+      }
+      (e.addEventListener("change", () => L(I)),
+        e.addEventListener("input", () => L(I)),
+        I(),
+        (_ = t.beacon) == null || _.once("bundle_viewed", n),
+        c.addEventListener("click", async () => {
+          var k, M;
+          let { rows: f } = I();
+          if (!(c.disabled || f.length === 0)) {
+            ((c.disabled = !0), c.setAttribute("aria-busy", "true"));
+            try {
+              (await s(
+                f.map((m) => ({ id: m.variantId, quantity: m.quantity, properties: { _bundle_id: n } })),
+              ),
+                y(g["bundle.added"]),
+                (k = t.beacon) == null || k.track("bundle_added", n),
+                ((M = t.notify) != null ? M : W)());
+            } catch (m) {
+              y(m instanceof R && m.message && m.status === 422 ? m.message : g["bundle.error"], {
+                focus: !0,
+              });
+            } finally {
+              (c.removeAttribute("aria-busy"), I());
+            }
+          }
+        }));
+    });
+  }
+  function ne(e, t = {}) {
+    e.querySelectorAll("[data-bk-bundle]").forEach((n) => be(n, t));
+  }
+  var re = () => {
+    var t;
+    let e = (t = document.querySelector("[data-bk-bundle]")) == null ? void 0 : t.dataset.beacon;
+    ne(document, { beacon: j(e) });
+  };
+  document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", re, { once: !0 }) : re();
+})();

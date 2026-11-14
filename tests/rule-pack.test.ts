@@ -174,3 +174,55 @@ describe("storefront upsell metafield", () => {
     });
   });
 });
+
+describe("handles", () => {
+  it("storefront metafields keep component handles; the Function pack strips them (size budget)", async () => {
+    const fake = new FakeShopify();
+    const b = bundle("b1", [1, 2], {
+      items: [
+        { productGid: P(1), handle: "mug", quantity: 1 },
+        { productGid: P(2), handle: "plate", quantity: 1 },
+      ],
+    });
+    const r = await syncShop(client(fake), state({ bundles: [b] }));
+    const storefront = JSON.parse(fake.store.get(`${P(1)}|bundles`)!);
+    expect(storefront.bundles[0].components.map((c: { handle: string }) => c.handle)).toEqual([
+      "mug",
+      "plate",
+    ]);
+    const pack = JSON.parse(fake.store.get(`${r.ruleDiscountGid}|fn`)!);
+    expect(JSON.stringify(pack)).not.toContain("mug");
+    expect(pack.bundles[0].components.every((c: object) => !("handle" in c))).toBe(true);
+  });
+});
+
+describe("upsell trigger expansion", () => {
+  it("expands collection triggers to product ids for the storefront", async () => {
+    const fake = new FakeShopify();
+    fake.collections.set(C(3), [P(30), P(31)]);
+    await syncShop(
+      client(fake),
+      state({
+        upsellRules: [
+          upsell("u1", [7], { triggerType: "COLLECTION", triggerGids: [C(3)] }),
+          upsell("u2", [8], { triggerType: "COLLECTION", triggerGids: [C(404)] }),
+        ],
+      }),
+    );
+    const rules = JSON.parse(fake.store.get(`${fake.shopGid}|upsells`)!).rules;
+    expect(rules).toHaveLength(1); // u2's collection has no products, so it can never fire
+    expect(rules[0].triggerProductIds).toEqual([P(30), P(31)]);
+  });
+});
+
+describe("shop config currency", () => {
+  it("stamps the shop currency into shippingBar so the storefront can skip other-currency carts", async () => {
+    const fake = new FakeShopify();
+    await syncShop(
+      client(fake),
+      state({ settings: { shippingBar: { enabled: true, thresholdMinor: "50000" } } }),
+    );
+    const cfg = JSON.parse(fake.store.get(`${fake.shopGid}|config`)!);
+    expect(cfg.shippingBar).toMatchObject({ enabled: true, thresholdMinor: "50000", currency: "INR" });
+  });
+});

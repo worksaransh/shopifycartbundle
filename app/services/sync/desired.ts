@@ -80,6 +80,7 @@ export class TooManyProductsError extends Error {
 interface RawItem {
   productGid?: string;
   collectionGid?: string;
+  handle?: string;
   quantity: number;
 }
 
@@ -96,6 +97,7 @@ export function toBundleConfig(b: BundleRow): BundleConfig {
     discountValue: b.discountValue,
     components: items.map((i) => ({
       ...(i.productGid ? { productId: i.productGid } : { collectionId: i.collectionGid }),
+      ...(i.handle ? { handle: i.handle } : {}),
       quantity: i.quantity,
     })),
     startsAt: iso(b.startsAt),
@@ -128,6 +130,9 @@ export function collectionGidsOf(state: SyncState): string[] {
   for (const v of state.volumeRules) {
     if (v.status === "ACTIVE" && v.targetType === "COLLECTION") v.targetGids.forEach((g) => out.add(g));
   }
+  for (const u of state.upsellRules) {
+    if (u.status === "ACTIVE" && u.triggerType === "COLLECTION") u.triggerGids.forEach((g) => out.add(g));
+  }
   return [...out].sort();
 }
 
@@ -139,10 +144,13 @@ export function buildDesired(
   state: SyncState,
   shopGid: string,
   collectionProducts: ReadonlyMap<string, readonly string[]>,
+  /** Shop currency: stamped into shippingBar.currency so the storefront can skip carts in another currency. */
+  currency?: string,
 ): Desired {
   const metafields: DesiredMetafield[] = [];
 
   const config = shopConfigSchema.parse({ schemaVersion: SCHEMA_VERSION, ...(state.settings as object) });
+  if (currency) config.shippingBar = { ...config.shippingBar, currency };
   metafields.push({
     ownerId: shopGid,
     key: KEYS.shopConfig,
@@ -152,17 +160,25 @@ export function buildDesired(
   const upsellRules = state.upsellRules
     .filter((u) => u.status === "ACTIVE")
     .sort((a, b) => a.id.localeCompare(b.id))
-    .map((u) => ({
-      id: u.id,
-      triggerType: u.triggerType,
-      triggerIds: u.triggerGids,
-      offerIds: u.offerGids,
-      offerHandles: u.offerHandles,
-      discountPercent: u.discountPercent ?? 0,
-      maxOffers: Math.min(u.maxOffers, u.offerGids.length),
-      hideIfInCart: u.hideIfInCart,
-      layout: u.layout === "CAROUSEL" ? "CAROUSEL" : "STACKED",
-    }));
+    .map((u) => {
+      const triggers = new Set<string>();
+      for (const g of u.triggerGids) {
+        if (u.triggerType === "PRODUCT") triggers.add(g);
+        else collectionProducts.get(g)?.forEach((p) => triggers.add(p));
+      }
+      return {
+        id: u.id,
+        triggerProductIds: [...triggers].sort().slice(0, 200),
+        offerIds: u.offerGids,
+        offerHandles: u.offerHandles,
+        discountPercent: u.discountPercent ?? 0,
+        maxOffers: Math.min(u.maxOffers, u.offerGids.length),
+        hideIfInCart: u.hideIfInCart,
+        layout: u.layout === "CAROUSEL" ? "CAROUSEL" : "STACKED",
+      };
+    })
+    // a collection trigger that currently has no products can never fire
+    .filter((u) => u.triggerProductIds.length > 0);
   metafields.push({
     ownerId: shopGid,
     key: KEYS.shopUpsells,
@@ -248,7 +264,9 @@ export function buildRulePack(state: SyncState, currency: string): BuiltPack {
   const bundles = state.bundles
     .filter((b) => b.status === "ACTIVE")
     .sort((a, b) => a.id.localeCompare(b.id))
-    .map(toBundleConfig);
+    .map(toBundleConfig)
+    // handles are for Liquid only; keep them out of the size-limited Function pack
+    .map((b) => ({ ...b, components: b.components.map(({ handle: _handle, ...c }) => c) }));
   const volume = state.volumeRules
     .filter((v) => v.status === "ACTIVE")
     .sort((a, b) => a.id.localeCompare(b.id))

@@ -58,7 +58,7 @@ export async function computeDesired(
   const shop = await resolveShop(client);
   const collections = await resolveCollectionProducts(client, collectionGidsOf(state));
   return {
-    desired: buildDesired(state, shop.gid, collections),
+    desired: buildDesired(state, shop.gid, collections, shop.currency),
     shopGid: shop.gid,
     pack: buildRulePack(state, shop.currency),
   };

@@ -11,6 +11,11 @@ export const itemSchema = z
   .object({
     productGid: gid("Product").optional(),
     collectionGid: gid("Collection").optional(),
+    handle: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]*$/, "Pick the product again.")
+      .max(255)
+      .optional(),
     quantity: z
       .number()
       .int("Quantity must be a whole number.")
