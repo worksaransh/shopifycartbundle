@@ -50,7 +50,15 @@ export const bundleSchema = z.object({
   discountType: z.enum(["PERCENT", "AMOUNT", "FIXED_PRICE"]),
   /** PERCENT: "1".."90". AMOUNT / FIXED_PRICE: integer minor units per bundle. */
   discountValue: minorString,
-  components: z.array(componentSchema).min(1).max(10),
+  components: z
+    .array(componentSchema)
+    .min(1)
+    .max(10)
+    // collection membership comes from inCollections(ids) which cannot tell WHICH collection a second component means
+    .refine(
+      (cs) => cs.filter((c) => c.collectionId).length <= 1,
+      "at most one collection component per bundle",
+    ),
   startsAt: isoDate.optional(),
   endsAt: isoDate.optional(),
 });
@@ -106,18 +114,31 @@ export const productVolumeSchema = z.object({
   rules: z.array(volumeRuleSchema).max(10),
 });
 
-/** Config stored on the automatic discount node of ONE rule; read by the Function via discountNode.metafield. */
-export const functionConfigSchema = z.discriminatedUnion("kind", [
-  z.object({ schemaVersion: z.literal(SCHEMA_VERSION), kind: z.literal("BUNDLE"), bundle: bundleSchema }),
-  z.object({
-    schemaVersion: z.literal(SCHEMA_VERSION),
-    kind: z.literal("VOLUME"),
-    rule: volumeRuleSchema,
-    /** Stack volume tiers on lines already in a complete bundle. Default off. */
-    stackWithBundles: z.boolean().default(false),
-  }),
-]);
-export type FunctionConfig = z.infer<typeof functionConfigSchema>;
+export const upsellDiscountSchema = z.object({
+  id: z.string().min(1).max(64),
+  /** Products this rule may discount. A line needs a matching `_upsell_id` AND a product in this list. */
+  offerIds: z.array(gid).min(1).max(3),
+  percentOff: z.number().int().min(1).max(90),
+});
+
+/**
+ * The ONE rule pack stored on the shop's single automatic discount node and read by the Function.
+ * A store may have at most 25 active discount functions across ALL apps, so we use one node per shop, not one per
+ * rule. All bundles, volume rules and upsell discounts share the FUNCTION_MAX_BYTES budget; saving fails with a
+ * clear message when it is exceeded. `collectionIds` doubles as the Function's input variable for inCollections().
+ */
+export const rulePackSchema = z.object({
+  schemaVersion: z.literal(SCHEMA_VERSION),
+  bundles: z.array(bundleSchema).max(50).default([]),
+  volume: z.array(volumeRuleSchema).max(20).default([]),
+  upsells: z.array(upsellDiscountSchema).max(20).default([]),
+  /** Let volume tiers also apply to lines that are part of a complete bundle. Default off. */
+  stackVolumeWithBundles: z.boolean().default(false),
+  collectionIds: z.array(gid).max(100).default([]),
+  /** Shop currency. AMOUNT / FIXED_PRICE bundle values are in this currency and are skipped for carts in another. */
+  currency: z.string().length(3).optional(),
+});
+export type RulePack = z.infer<typeof rulePackSchema>;
 
 export class ConfigTooLargeError extends Error {
   constructor(

@@ -94,6 +94,8 @@ model Shop {
   syncError         String?
   /// Products that currently carry our metafields, so stale ones can be cleaned up.
   syncedProductGids String[]  @default([])
+  /// The shop's single automatic discount node (Function rule pack). Max 25 discount functions per store, so ONE.
+  ruleDiscountGid   String?
 
   bundles           Bundle[]
   volumeRules       VolumeRule[]

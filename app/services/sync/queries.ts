@@ -4,7 +4,7 @@
 import { NAMESPACE } from "@bundlekit/config-schema";
 
 export const SHOP_ID = `#graphql
-  query ShopId { shop { id } }`;
+  query ShopId { shop { id currencyCode } }`;
 
 export const SET_METAFIELDS = `#graphql
   mutation SetMetafields($metafields: [MetafieldsSetInput!]!) {
@@ -47,4 +47,30 @@ export const READ_PRODUCT_METAFIELDS = `#graphql
         volume: metafield(namespace: "${NAMESPACE}", key: "volume") { value }
       }
     }
+  }`;
+
+export const DISCOUNT_NODE_EXISTS = `#graphql
+  query DiscountNodeExists($id: ID!) { discountNode(id: $id) { id } }`;
+
+export const READ_RULE_PACK = `#graphql
+  query ReadRulePack($id: ID!) {
+    discountNode(id: $id) { id metafield(namespace: "${NAMESPACE}", key: "fn") { value } }
+  }`;
+
+export const CREATE_RULE_DISCOUNT = `#graphql
+  mutation CreateRuleDiscount($discount: DiscountAutomaticAppInput!) {
+    discountAutomaticAppCreate(automaticAppDiscount: $discount) {
+      automaticAppDiscount { discountId }
+      userErrors { field message code }
+    }
+  }`;
+
+export const ACTIVATE_DISCOUNT = `#graphql
+  mutation ActivateDiscount($id: ID!) {
+    discountAutomaticActivate(id: $id) { userErrors { field message } }
+  }`;
+
+export const DEACTIVATE_DISCOUNT = `#graphql
+  mutation DeactivateDiscount($id: ID!) {
+    discountAutomaticDeactivate(id: $id) { userErrors { field message } }
   }`;

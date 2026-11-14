@@ -1,8 +1,11 @@
-import { MAX_SYNC_PRODUCTS } from "@bundlekit/config-schema";
+import { KEYS, MAX_SYNC_PRODUCTS } from "@bundlekit/config-schema";
+import { ensureRulePackNode } from "./discount-node";
 import {
   buildDesired,
+  buildRulePack,
   collectionGidsOf,
   TooManyProductsError,
+  type BuiltPack,
   type Desired,
   type SyncState,
 } from "./desired";
@@ -14,12 +17,13 @@ export interface SyncReport {
   set: number;
   deleted: number;
   productGids: string[];
+  ruleDiscountGid: string | null;
 }
 
-export async function resolveShopGid(client: GqlClient): Promise<string> {
-  return (await client.request<{ shop: { id: string } }>(SHOP_ID)).shop.id;
+export async function resolveShop(client: GqlClient): Promise<{ gid: string; currency: string }> {
+  const { shop } = await client.request<{ shop: { id: string; currencyCode: string } }>(SHOP_ID);
+  return { gid: shop.id, currency: shop.currencyCode };
 }
-
 /** Product ids of each collection, paginated. Stops early past the sync cap so a huge collection fails fast. */
 export async function resolveCollectionProducts(
   client: GqlClient,
@@ -50,19 +54,27 @@ export async function resolveCollectionProducts(
 export async function computeDesired(
   client: GqlClient,
   state: SyncState,
-): Promise<{ desired: Desired; shopGid: string }> {
-  const shopGid = await resolveShopGid(client);
+): Promise<{ desired: Desired; shopGid: string; pack: BuiltPack }> {
+  const shop = await resolveShop(client);
   const collections = await resolveCollectionProducts(client, collectionGidsOf(state));
-  return { desired: buildDesired(state, shopGid, collections), shopGid };
+  return {
+    desired: buildDesired(state, shop.gid, collections),
+    shopGid: shop.gid,
+    pack: buildRulePack(state, shop.currency),
+  };
 }
 
-/** Writes every desired metafield and removes ones that no longer apply. Idempotent. */
+/** Writes every desired metafield, keeps the discount node in step, and removes metafields that no longer apply. Idempotent. */
 export async function syncShop(client: GqlClient, state: SyncState): Promise<SyncReport> {
-  const { desired } = await computeDesired(client, state);
-  const set = await setMetafields(client, desired.metafields);
+  const { desired, pack } = await computeDesired(client, state);
+  const nodeGid = await ensureRulePackNode(client, state.ruleDiscountGid, pack);
+  const all = nodeGid
+    ? [...desired.metafields, { ownerId: nodeGid, key: KEYS.functionConfig, value: pack.json }]
+    : desired.metafields;
+  const set = await setMetafields(client, all);
   const deleted = await deleteMetafields(
     client,
     staleRefs(desired.metafields, state.syncedProductGids, desired.productGids),
   );
-  return { set, deleted, productGids: desired.productGids };
+  return { set, deleted, productGids: desired.productGids, ruleDiscountGid: nodeGid };
 }

@@ -8,6 +8,10 @@ export class FakeShopify implements AdminLike {
   readonly store = new Map<string, string>(); // `${ownerId}|${key}` -> json string
   readonly collections = new Map<string, string[]>();
   readonly calls: { op: string; size: number }[] = [];
+  /** discount nodes: gid -> status */
+  readonly nodes = new Map<string, "ACTIVE" | "EXPIRED">();
+  readonly createdDiscounts: Record<string, any>[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
+  private nextNode = 1;
   failures: Failure[] = [];
   userError: string | null = null;
 
@@ -36,7 +40,37 @@ export class FakeShopify implements AdminLike {
     }
     const v = (options?.variables ?? {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-    if (query.includes("query ShopId")) return this.json({ data: { shop: { id: this.shopGid } } });
+    if (query.includes("query ShopId"))
+      return this.json({ data: { shop: { id: this.shopGid, currencyCode: "INR" } } });
+
+    if (query.includes("query DiscountNodeExists")) {
+      return this.json({ data: { discountNode: this.nodes.has(v.id) ? { id: v.id } : null } });
+    }
+    if (query.includes("mutation CreateRuleDiscount")) {
+      this.calls.push({ op: "createDiscount", size: 1 });
+      const gid = `gid://shopify/DiscountAutomaticNode/${this.nextNode++}`;
+      this.createdDiscounts.push(v.discount);
+      this.nodes.set(gid, "ACTIVE");
+      for (const m of v.discount.metafields ?? []) this.store.set(`${gid}|${m.key}`, m.value);
+      return this.json({
+        data: { discountAutomaticAppCreate: { automaticAppDiscount: { discountId: gid }, userErrors: [] } },
+      });
+    }
+    if (query.includes("mutation ActivateDiscount") || query.includes("mutation DeactivateDiscount")) {
+      const on = query.includes("mutation ActivateDiscount");
+      this.calls.push({ op: on ? "activate" : "deactivate", size: 1 });
+      this.nodes.set(v.id, on ? "ACTIVE" : "EXPIRED");
+      const field = on ? "discountAutomaticActivate" : "discountAutomaticDeactivate";
+      return this.json({ data: { [field]: { userErrors: [] } } });
+    }
+    if (query.includes("query ReadRulePack")) {
+      const value = this.store.get(`${v.id}|fn`);
+      return this.json({
+        data: {
+          discountNode: this.nodes.has(v.id) ? { id: v.id, metafield: value ? { value } : null } : null,
+        },
+      });
+    }
 
     if (query.includes("mutation SetMetafields")) {
       this.calls.push({ op: "set", size: v.metafields.length });

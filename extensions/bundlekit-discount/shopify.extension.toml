@@ -1,0 +1,21 @@
+# Docs: https://shopify.dev/docs/api/functions/2026-10/discount
+# NOT yet built with the Shopify CLI (no CLI auth in the authoring environment). First run on a dev store:
+#   shopify app function build   (confirm the export name, input query cost and wasm size; update DECISIONS.md)
+api_version = "2026-10"
+
+[[extensions]]
+name = "BundleKit discounts"
+handle = "bundlekit-discount"
+type = "function"
+description = "Bundles, volume tiers and upsell discounts from one rule pack."
+
+  [[extensions.targeting]]
+  target = "cart.lines.discounts.generate.run"
+  input_query = "src/cart_lines_discounts_generate_run.graphql"
+  export = "cart-lines-discounts-generate-run"
+  # The rule pack metafield on the discount node is both the config and the source of $collectionIds.
+  input_variables = { namespace = "$app:bundlekit", key = "fn" }
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"

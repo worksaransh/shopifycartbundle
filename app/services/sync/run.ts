@@ -8,7 +8,7 @@ import { syncShop } from "./sync";
 export interface SyncRepo {
   load(shopDomain: string): Promise<SyncState | null>;
   markSyncing(shopId: string): Promise<void>;
-  markSynced(shopId: string, productGids: string[]): Promise<void>;
+  markSynced(shopId: string, productGids: string[], ruleDiscountGid: string | null): Promise<void>;
   markFailed(shopId: string, message: string): Promise<void>;
 }
 
@@ -55,7 +55,7 @@ export async function runSync(shopDomain: string, deps: RunDeps): Promise<RunRes
   try {
     const client = new GqlClient(await deps.admin(shopDomain), deps.gql);
     const report = await syncShop(client, state);
-    await deps.repo.markSynced(state.shopId, report.productGids);
+    await deps.repo.markSynced(state.shopId, report.productGids, report.ruleDiscountGid);
     deps.log?.("metafield sync ok", { shop: shopDomain, set: report.set, deleted: report.deleted });
     return { ok: true, set: report.set, deleted: report.deleted };
   } catch (e) {
@@ -81,6 +81,7 @@ export async function runReconcile(
   if (!state) return null;
   const client = new GqlClient(await deps.admin(shopDomain), deps.gql);
   const report = await reconcileShop(client, state, opts);
-  if (report.repaired || opts.repair !== false) await deps.repo.markSynced(state.shopId, report.productGids);
+  if (report.repaired || opts.repair !== false)
+    await deps.repo.markSynced(state.shopId, report.productGids, report.ruleDiscountGid);
   return report;
 }

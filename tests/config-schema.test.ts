@@ -3,7 +3,8 @@ import {
   ConfigTooLargeError,
   FUNCTION_MAX_BYTES,
   bundleSchema,
-  functionConfigSchema,
+  rulePackSchema,
+  upsellDiscountSchema,
   parseStored,
   productBundlesSchema,
   serialize,
@@ -88,45 +89,33 @@ describe("config-schema", () => {
     ).toBe(false);
   });
   it("enforces the byte cap with ConfigTooLargeError", () => {
-    const cfg = { schemaVersion: 1, kind: "BUNDLE", bundle };
-    expect(() => serialize(functionConfigSchema, cfg, 100, "rule")).toThrow(ConfigTooLargeError);
+    expect(() => serialize(rulePackSchema, { schemaVersion: 1, bundles: [bundle] }, 100, "pack")).toThrow(
+      ConfigTooLargeError,
+    );
   });
-  it("worst-case schema-valid Function configs stay under the 10,000-byte Function input limit", () => {
-    const gid = (i: number) => `gid://shopify/Product/${9_000_000_000_000 + i}`;
-    const worstVolume = {
+  it("a realistic pack fits the Function limit; a huge one fails with a clear error", () => {
+    const mk = (n: number) => ({ ...bundle, id: `bundle-${n}`, title: `Bundle number ${n}` });
+    const realistic = {
       schemaVersion: 1,
-      kind: "VOLUME",
-      stackWithBundles: true,
-      rule: {
-        id: "x".repeat(64),
-        targetType: "PRODUCT",
-        targetIds: Array.from({ length: 100 }, (_, i) => gid(i)),
-        mode: "PER_LINE",
-        tiers: [2, 3, 4, 5, 6].map((q) => ({ minQty: q, percentOff: 90 })),
-        startsAt: "2026-11-14T10:00:00.000+05:30",
-        endsAt: "2026-12-14T10:00:00.000+05:30",
-      },
+      bundles: Array.from({ length: 10 }, (_, i) => mk(i)),
+      volume: [volume, { ...volume, id: "v2" }],
+      upsells: [{ id: "u1", offerIds: [P(3)], percentOff: 10 }],
     };
-    const worstBundle = {
-      schemaVersion: 1,
-      kind: "BUNDLE",
-      bundle: {
-        id: "x".repeat(64),
-        title: "é".repeat(80),
-        type: "MIX_MATCH",
-        badge: "é".repeat(40),
-        discountType: "FIXED_PRICE",
-        discountValue: "999999999999999",
-        components: Array.from({ length: 10 }, (_, i) => ({ productId: gid(i), quantity: 99 })),
-        startsAt: "2026-11-14T10:00:00.000+05:30",
-        endsAt: "2026-12-14T10:00:00.000+05:30",
-      },
-    };
-    for (const cfg of [worstVolume, worstBundle]) {
-      expect(
-        new TextEncoder().encode(serialize(functionConfigSchema, cfg, FUNCTION_MAX_BYTES, "worst")).length,
-      ).toBeLessThan(FUNCTION_MAX_BYTES);
-    }
+    expect(
+      new TextEncoder().encode(serialize(rulePackSchema, realistic, FUNCTION_MAX_BYTES, "pack")).length,
+    ).toBeLessThan(FUNCTION_MAX_BYTES);
+    const huge = { schemaVersion: 1, bundles: Array.from({ length: 50 }, (_, i) => mk(i)) };
+    expect(() => serialize(rulePackSchema, huge, FUNCTION_MAX_BYTES, "pack")).toThrow(/limit is 9500/);
+  });
+  it("a bundle may have at most one collection component; upsells offer at most 3 products", () => {
+    const c = (n: number) => ({ collectionId: `gid://shopify/Collection/${n}`, quantity: 1 });
+    expect(bundleSchema.safeParse({ ...bundle, components: [c(1), c(2)] }).success).toBe(false);
+    expect(
+      bundleSchema.safeParse({ ...bundle, components: [c(1), { productId: P(1), quantity: 1 }] }).success,
+    ).toBe(true);
+    expect(
+      upsellDiscountSchema.safeParse({ id: "u", offerIds: [P(1), P(2), P(3), P(4)], percentOff: 10 }).success,
+    ).toBe(false);
   });
   it("readers fail safe on unknown versions, bad JSON and bad shapes", () => {
     expect(parseStored(productBundlesSchema, JSON.stringify({ schemaVersion: 2, bundles: [] }))).toBeNull();

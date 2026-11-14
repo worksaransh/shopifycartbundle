@@ -36,6 +36,8 @@ export const state = (over: Partial<SyncState> = {}): SyncState => ({
   settings: { shippingBar: { enabled: true, thresholdMinor: "50000" } },
   bundles: [],
   volumeRules: [],
+  upsellRules: [],
   syncedProductGids: [],
+  ruleDiscountGid: null,
   ...over,
 });

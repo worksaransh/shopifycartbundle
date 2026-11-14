@@ -2,8 +2,10 @@ import {
   KEYS,
   MAX_SYNC_PRODUCTS,
   STOREFRONT_MAX_BYTES,
+  FUNCTION_MAX_BYTES,
   productBundlesSchema,
   productVolumeSchema,
+  rulePackSchema,
   serialize,
   shopConfigSchema,
   SCHEMA_VERSION,
@@ -32,13 +34,21 @@ export interface VolumeRow {
   startsAt: Date | null;
   endsAt: Date | null;
 }
+export interface UpsellRow {
+  id: string;
+  status: "ACTIVE" | "PAUSED" | "DRAFT";
+  offerGids: string[];
+  discountPercent: number | null;
+}
 export interface SyncState {
   shopId: string;
   shopDomain: string;
   settings: unknown;
   bundles: BundleRow[];
   volumeRules: VolumeRow[];
+  upsellRules: UpsellRow[];
   syncedProductGids: string[];
+  ruleDiscountGid: string | null;
 }
 
 export interface DesiredMetafield {
@@ -189,4 +199,49 @@ export function buildDesired(
     }
   }
   return { metafields, productGids: products };
+}
+
+export interface BuiltPack {
+  json: string;
+  /** True when no active bundle, volume rule or discounted upsell exists (the discount can be switched off). */
+  empty: boolean;
+}
+
+/**
+ * The rule pack read by the Function from the shop's single discount node. Deterministic output.
+ * Fails with ConfigTooLargeError when active rules exceed the 9,500-byte Function budget.
+ */
+export function buildRulePack(state: SyncState, currency: string): BuiltPack {
+  const bundles = state.bundles
+    .filter((b) => b.status === "ACTIVE")
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map(toBundleConfig);
+  const volume = state.volumeRules
+    .filter((v) => v.status === "ACTIVE")
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map(volumeRowToConfig);
+  const upsells = state.upsellRules
+    .filter((u) => u.status === "ACTIVE" && (u.discountPercent ?? 0) > 0)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((u) => ({ id: u.id, offerIds: u.offerGids, percentOff: u.discountPercent as number }));
+  const collectionIds = new Set<string>();
+  for (const b of bundles)
+    for (const c of b.components) if (c.collectionId) collectionIds.add(c.collectionId);
+  for (const v of volume) if (v.targetType === "COLLECTION") v.targetIds.forEach((g) => collectionIds.add(g));
+  const settings = (state.settings ?? {}) as { stackVolumeWithBundles?: boolean };
+  const json = serialize(
+    rulePackSchema,
+    {
+      schemaVersion: SCHEMA_VERSION,
+      bundles,
+      volume,
+      upsells,
+      stackVolumeWithBundles: settings.stackVolumeWithBundles === true,
+      collectionIds: [...collectionIds].sort(),
+      currency,
+    },
+    FUNCTION_MAX_BYTES,
+    "Active rules",
+  );
+  return { json, empty: bundles.length + volume.length + upsells.length === 0 };
 }

@@ -14,13 +14,17 @@ export function isMinor(n: unknown): n is Minor {
   return typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
 }
 
-/** floor((a*b + d/2) / d) for non-negative integers, without float error. d must be > 0. */
+/**
+ * floor((a*b + d/2) / d) for non-negative integers, without float error. d must be > 0.
+ * Plain number math when 2*a*b + d is a safe integer (every realistic cart); BigInt only beyond that, so the
+ * Function runtime never needs BigInt for normal amounts.
+ */
 export function mulDivRoundHalfUp(a: number, b: number, d: number): number {
   if (!(isMinor(a) && isMinor(b) && isMinor(d)) || d === 0)
     throw new RangeError("mulDivRoundHalfUp: bad operands");
-  const num = BigInt(a) * BigInt(b);
-  const den = BigInt(d);
-  return Number((2n * num + den) / (2n * den));
+  const num2 = 2 * a * b + d;
+  if (Number.isSafeInteger(num2)) return Math.floor(num2 / (2 * d));
+  return Number((2n * BigInt(a) * BigInt(b) + BigInt(d)) / (2n * BigInt(d)));
 }
 
 /** percent of amount, half up. percent is an integer 0-100. */

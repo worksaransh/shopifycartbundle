@@ -9,15 +9,18 @@ export const prismaSyncRepo: SyncRepo = {
   async load(shopDomain) {
     const shop = await db.shop.findUnique({ where: { domain: shopDomain } });
     if (!shop) return null;
-    const [bundles, volumeRules] = await Promise.all([
+    const [bundles, volumeRules, upsellRules] = await Promise.all([
       db.bundle.findMany({ where: { shopId: shop.id } }),
       db.volumeRule.findMany({ where: { shopId: shop.id } }),
+      db.upsellRule.findMany({ where: { shopId: shop.id } }),
     ]);
     return {
       shopId: shop.id,
       shopDomain: shop.domain,
       settings: shop.settings,
       syncedProductGids: shop.syncedProductGids,
+      ruleDiscountGid: shop.ruleDiscountGid,
+      upsellRules: upsellRules as unknown as SyncState["upsellRules"],
       bundles: bundles as unknown as SyncState["bundles"],
       volumeRules: volumeRules as unknown as SyncState["volumeRules"],
     };
@@ -25,7 +28,7 @@ export const prismaSyncRepo: SyncRepo = {
   async markSyncing(shopId) {
     await db.shop.update({ where: { id: shopId }, data: { syncStatus: "SYNCING", syncError: null } });
   },
-  async markSynced(shopId, productGids) {
+  async markSynced(shopId, productGids, ruleDiscountGid) {
     await db.shop.update({
       where: { id: shopId },
       data: {
@@ -33,6 +36,7 @@ export const prismaSyncRepo: SyncRepo = {
         syncError: null,
         metafieldSyncedAt: new Date(),
         syncedProductGids: productGids,
+        ruleDiscountGid,
       },
     });
   },

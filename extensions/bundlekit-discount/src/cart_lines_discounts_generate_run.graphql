@@ -1,0 +1,42 @@
+query Input($collectionIds: [ID!]) {
+  cart {
+    cost {
+      subtotalAmount {
+        currencyCode
+      }
+    }
+    lines {
+      id
+      quantity
+      bundleId: attribute(key: "_bundle_id") {
+        value
+      }
+      upsellId: attribute(key: "_upsell_id") {
+        value
+      }
+      cost {
+        amountPerQuantity {
+          amount
+        }
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            id
+            inCollections(ids: $collectionIds) {
+              collectionId
+              isMember
+            }
+          }
+        }
+      }
+    }
+  }
+  discountNode {
+    metafield(namespace: "$app:bundlekit", key: "fn") {
+      value
+    }
+  }
+}

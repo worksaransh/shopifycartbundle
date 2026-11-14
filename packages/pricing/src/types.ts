@@ -19,6 +19,8 @@ export interface PricingLine {
   unitPriceMinor: Minor;
   /** Value of the `_bundle_id` line property, if present. */
   bundleId?: string | null;
+  /** Value of the `_upsell_id` line property, if present. */
+  upsellId?: string | null;
 }
 
 /** A bundle requirement: `quantity` units matching a product or a collection. */
@@ -30,6 +32,7 @@ export interface BundleComponent {
 
 export interface BundleRule {
   id: string;
+  title?: string;
   discountType: DiscountType;
   /** PERCENT: integer 1-90. AMOUNT / FIXED_PRICE: minor units for ONE bundle instance. */
   discountValue: number;

@@ -96,11 +96,59 @@ scheduler) cover the same ground. Concurrent syncs for one shop are last-write-w
 `metafieldsDelete(metafields: [MetafieldIdentifierInput!]!)` and that `Shop` has `id` and `metafield`; the full documents
 could not be validated here, so the first dev-store run must confirm them. Shop config is read with `shop { }`, not `nodes`.
 
+## Phase 2: discount Function and bundle wizard
+
+**One rule pack per shop (supersedes the Phase 1 "one node per rule" idea).** Docs: a store can have at most **25 active
+discount functions across all apps**, and they run with no knowledge of each other. One node per bundle would burn the
+merchant's whole budget. So there is ONE automatic discount node per shop (`Shop.ruleDiscountGid`) whose `fn` metafield
+holds a rule pack: all active bundles, volume rules and discounted upsells. One run also lets us resolve conflicts in
+one place. Cost: the pack shares a **9,500-byte budget** (Functions get `null` above 10,000). A realistic pack of 10
+bundles + 2 volume rules + 1 upsell is well under it; 45 bundles fail save with a clear message. Sharding across
+several nodes is in BACKLOG for listing scale.
+
+**Function language: JavaScript.** It imports `packages/pricing` directly, so the checkout math and the storefront
+preview are the same code (property-tested). Trade-off: JS Functions cost more instructions than Rust (docs sample:
+about 45k vs 19k for a trivial Rust Function; limits are far higher). `mulDivRoundHalfUp` uses plain numbers for all
+realistic amounts and only falls back to BigInt beyond 2^53, since we have not confirmed BigInt in the Function runtime.
+zod is kept out of the Function; the pack is validated on write and only lightly checked on read.
+
+**Fail open.** `cartLinesDiscountsGenerateRun` wraps everything in try/catch: bad config, version mismatch or an
+unparsable price means no discount, never an error that could block checkout. Tested (20 fixture carts).
+
+**Conflict rules** (`computeCartDiscounts`, tested): bundles first; volume tiers skip lines in a complete bundle unless
+the merchant enables `stackVolumeWithBundles` (default off), in which case the volume discount is capped at what is left
+of the line; a line gets at most one volume rule; upsell discounts need a matching `_upsell_id` AND an offered product
+and are skipped if the line already has a discount (so a forged id on another product gets nothing). Per line the total
+never exceeds the line total.
+
+**Collections.** Membership uses `inCollections(ids: $collectionIds)` with the pack's `collectionIds` as an input
+variable (`input_variables` in the toml). A bundle may have at most one collection component, because `inCollections`
+cannot say which collection a second component meant.
+
+**Currency.** Cart amounts are presentment currency. PERCENT bundles work in any currency. AMOUNT and FIXED_PRICE values
+are stored in the shop currency, so they are skipped for carts in another currency (no FX tricks, per scope). Exponent
+table in `packages/pricing/src/currency.ts` (0, 2 or 3 decimals).
+
+**combinesWith.** The discount node combines with ORDER and SHIPPING discounts (merchant free-shipping and order codes
+keep working) but not other PRODUCT discounts, so a merchant sale and a bundle never compound on one line by surprise.
+Revisit if a client wants the opposite.
+
+**Function toml and build are unverified.** `export = "cart-lines-discounts-generate-run"`, the JS entry and
+`build.command` follow the docs pattern but have not been run through `shopify app function build` (no CLI auth here).
+The first dev-store run must confirm the build, the wasm size, the input-query cost (limit 30; the query has one
+`inCollections` and one metafield read, estimated well under) and that `$app:bundlekit` resolves in
+`discountAutomaticAppCreate.metafields`.
+
+**Wizard.** Fixed bundle: 2+ distinct products. Mix-and-match: one collection and a quantity of at least 2. Server
+validation (zod) is authoritative; inline validation reuses the same schema on blur. The preview calls the shared
+`renderBundleCard` (packages/widgets), the same function the storefront block will use. The 90-second target is NOT
+measured (no store); defaults are chosen so a fixed bundle is: pick products, Next, Save.
+
+**Embed check.** Detecting the app embed via API needs `read_themes`, which we do not request. Home uses a manual
+"I did this" confirmation (stored in `Shop.settings.setup`).
+
 ## Open items (carry forward)
 
-- Function language (Rust vs JS): decide in Phase 2 with measured wasm size and instruction count; template sample
-  shows ~19k instructions for a trivial Rust Function. `packages/pricing` uses BigInt and TypeScript; a Rust Function
-  would re-implement it, with the property-test cases ported as fixtures. Check BigInt support if choosing JS.
-- Combined-discount behaviour (`combinesWith`): decide in Phase 2 and test against merchant discount codes.
+- Combined-discount behaviour with real merchant discount codes: unit tests cannot cover Shopify's combination engine; test on a dev store.
 - Theme-extension JS: Shopify suggests <=10 KB compressed per schema-referenced file; our 30 KB total budget is split
   across files accordingly.

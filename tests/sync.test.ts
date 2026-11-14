@@ -72,7 +72,7 @@ describe("syncShop", () => {
       client(fake),
       state({ bundles: [bundle("b2", [], { items: [{ collectionGid: C(2), quantity: 2 }] })] }),
     );
-    expect(fake.setCalls().map((c) => c.size)).toEqual([25, 25, 11]); // 1 shop config + 60 products
+    expect(fake.setCalls().map((c) => c.size)).toEqual([25, 25, 12]); // 1 shop config + 60 products + 1 rule pack
   });
 
   it("removes metafields that no longer apply, key by key", async () => {

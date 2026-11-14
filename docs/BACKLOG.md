@@ -17,3 +17,4 @@ A/B testing, loyalty, WhatsApp.
   collection targets). Would remove per-product writes, stale cleanup and the `write_products` scope; limit is 128 KB.
 - Per-shop sync lock (advisory lock) so overlapping syncs cannot interleave.
 - Trigger.dev adapter for `SyncScheduler` and the daily reconcile cron.
+- Shard the rule pack across several discount nodes when active rules exceed the 9,500-byte budget (listing scale).
