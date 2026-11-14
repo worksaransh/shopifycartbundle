@@ -26,7 +26,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "build:storefront": "node scripts/build-storefront.mjs",
-    "check:storefront": "node scripts/build-storefront.mjs --check"
+    "check:storefront": "node scripts/build-storefront.mjs --check",
+    "report": "tsx scripts/weekly-report.ts"
   },
   "type": "module",
   "engines": {

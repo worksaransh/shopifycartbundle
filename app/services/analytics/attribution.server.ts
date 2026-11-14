@@ -88,13 +88,14 @@ export async function recordRefund(
   for (const r of reductions) {
     all += r.amountMinor;
     if (!r.source || !r.refId) continue;
-    const where = {
-      shopId_orderGid_source_refId: { shopId: shop.id, orderGid, source: r.source, refId: r.refId },
-    };
-    const row = await db.orderAttribution.findUnique({ where });
+    const key = { shopId: shop.id, orderGid, source: r.source, refId: r.refId };
+    const row = await db.orderAttribution.findUnique({ where: { shopId_orderGid_source_refId: key } });
     if (!row) continue;
     const next = row.revenueMinor - BigInt(r.amountMinor);
-    await db.orderAttribution.update({ where, data: { revenueMinor: next < 0n ? 0n : next } });
+    await db.orderAttribution.update({
+      where: { shopId_orderGid_source_refId: key },
+      data: { revenueMinor: next < 0n ? 0n : next },
+    });
   }
   if (all > 0) {
     const next = total.totalMinor - BigInt(all);

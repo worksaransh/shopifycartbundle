@@ -46,22 +46,36 @@ app/                       Admin app (React Router): routes, services, webhooks,
 packages/
   pricing/                 Pure money math + property tests (fast-check)
   config-schema/           Versioned zod contract for every metafield
-extensions/                Discount Function and theme app extension
+extensions/                bundlekit-discount (Function), bundlekit-theme (blocks + app embed)
+packages/storefront        Vanilla-JS storefront modules (built into the theme extension by npm run build:storefront)
+packages/widgets           Shared card renderer, strings, CSS, contrast helper
 prisma/                    Schema, migrations, seed
 tests/                     Vitest suites (webhooks, sync, schema, logging, crypto)
-docs/                      UX_SPEC, DECISIONS, BACKLOG, RUNBOOK (+ metrics, client guide as built)
+docs/                      UX_SPEC, DECISIONS, BACKLOG, RUNBOOK, METRICS, SECURITY, REVIEW, CLIENT_GUIDE, PILOT_*, LISTING_GAPS
 ```
 
 ## Status
 
-| Phase | Scope                                                                                       | State                                                                    |
-| ----- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 0     | Scaffold, Prisma schema, HMAC-verified idempotent webhooks, CI                              | Built, unit-tested. Install on a dev store not yet run.                  |
-| 1     | Pricing core, metafield contract, sync, reconcile                                           | Built, unit-tested against a fake Shopify. Not yet run on a real store.  |
-| 2-10  | Functions, wizard, volume, storefront, upsell, analytics, polish, hardening, pilot, listing | See the latest commit message and [docs/DECISIONS.md](docs/DECISIONS.md) |
+All code below is built and covered by automated tests (217 tests, run in CI). **Nothing has been run on a real Shopify store yet**:
+no install, no checkout, no theme rendering, no Lighthouse. That is the main remaining risk; the exact steps are the
+"Dev-store verification checklist" in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
-Checks that need a real dev store (install, checkout discount, theme rendering, Lighthouse) are listed in
-[docs/RUNBOOK.md](docs/RUNBOOK.md) and are **not** claimed as passed until someone runs them.
+| Phase | Scope                                                                       | State                                                                                                     |
+| ----- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 0     | Scaffold, Prisma schema, HMAC-verified idempotent webhooks, CI              | Built, tested                                                                                             |
+| 1     | Pricing core (property-tested), metafield contract, sync, reconcile         | Built, tested against a fake Shopify                                                                      |
+| 2     | Discount Function (JS, fails open), bundle wizard and list, Home checklist  | Built; 24 fixture carts pass. **Function not yet built with the Shopify CLI**                             |
+| 3     | Volume discounts (tiers, dates in shop time zone, bundle conflicts)         | Built, tested                                                                                             |
+| 4     | Theme app extension: Bundle and Volume blocks                               | Built; jsdom-tested. **Not rendered on a real theme**                                                     |
+| 5     | Cart embed: shipping bar, upsells, theme adapters, kill switch, settings    | Built; jsdom-tested. **Adapters unverified on real themes**                                               |
+| 6     | Analytics and attribution, KPIs, CSV                                        | Built; 10-order hand calculation matches. **Webhook payload assumptions unverified**                      |
+| 7     | Onboarding checklist, client guide, settings with contrast warnings         | Built. Not timed with a new user                                                                          |
+| 8     | Hardening: privacy webhooks, tenant-scope test, health check, audit, review | Partly done. Error tracking, backups, Playwright E2E need accounts or a store                             |
+| 9     | 30-day pilot                                                                | **Not started** (needs two real stores). Plan and decision gate: [docs/PILOT_PLAN.md](docs/PILOT_PLAN.md) |
+| 10    | App Store listing                                                           | **Not started and gated** on the pilot. Gaps: [docs/LISTING_GAPS.md](docs/LISTING_GAPS.md)                |
+
+Known limits: about 10 to 20 active rules per shop (checkout config budget), per-instance rate limiting, last-write-wins sync.
+See [docs/REVIEW.md](docs/REVIEW.md) for the full list of findings and which are still open.
 
 ## Getting started
 

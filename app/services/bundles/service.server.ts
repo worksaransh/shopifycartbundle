@@ -1,6 +1,7 @@
 import db from "../../db.server";
 import { fieldErrors, bundleInputSchema, type BundleInput } from "./validation";
 import { syncShopMetafields } from "../sync/repo.server";
+import { syncOrRollback } from "../sync/activate.server";
 
 export type SaveResult =
   | { ok: true; id: string; synced: boolean; syncMessage?: string }
@@ -33,16 +34,25 @@ export async function createBundle(domain: string, raw: unknown): Promise<SaveRe
       })),
     },
   });
-  const sync = await syncShopMetafields(domain);
-  return { ok: true, id: row.id, synced: sync.ok, ...(sync.ok ? {} : { syncMessage: sync.message }) };
+  const sync = await syncOrRollback(domain, async () => {
+    await db.bundle.updateMany({ where: { shopId, id: row.id }, data: { status: "DRAFT" } });
+  });
+  return { ok: true, id: row.id, synced: sync.synced, ...(sync.synced ? {} : { syncMessage: sync.message }) };
 }
 
 /** Pause or resume. Paused bundles stay in the database (history kept) but leave the metafields and the pack. */
 export async function setBundlesStatus(domain: string, ids: string[], status: "ACTIVE" | "PAUSED") {
   const shopId = await shopIdOf(domain);
+  const before =
+    status === "ACTIVE"
+      ? await db.bundle.findMany({ where: { shopId, id: { in: ids } }, select: { id: true, status: true } })
+      : [];
   const { count } = await db.bundle.updateMany({ where: { shopId, id: { in: ids } }, data: { status } });
-  const sync = await syncShopMetafields(domain);
-  return { changed: count, synced: sync.ok, syncMessage: sync.ok ? undefined : sync.message };
+  const sync = await syncOrRollback(domain, async () => {
+    for (const b of before)
+      await db.bundle.updateMany({ where: { shopId, id: b.id }, data: { status: b.status } });
+  });
+  return { changed: count, synced: sync.synced, syncMessage: sync.synced ? undefined : sync.message };
 }
 
 /** Delete the bundle row. Attribution rows keep their refId, so historical stats survive. */

@@ -1,3 +1,4 @@
+import { logger } from "./lib/logger.server";
 import { PassThrough } from "stream";
 import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter } from "react-router";
@@ -40,7 +41,10 @@ export default async function handleRequest(
         },
         onError(error) {
           responseStatusCode = 500;
-          console.error(error);
+          logger.error(
+            { err: error instanceof Error ? error.message : "render error" },
+            "server render failed",
+          );
         },
       },
     );

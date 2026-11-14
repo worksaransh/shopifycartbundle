@@ -18,3 +18,8 @@ A/B testing, loyalty, WhatsApp.
 - Per-shop sync lock (advisory lock) so overlapping syncs cannot interleave.
 - Trigger.dev adapter for `SyncScheduler` and the daily reconcile cron.
 - Shard the rule pack across several discount nodes when active rules exceed the 9,500-byte budget (listing scale).
+- Shared rate limiter (Redis/Upstash) and per-shop sync lock before running more than one instance.
+- Shop-timezone day boundaries for reports (currently UTC days).
+- Announce volume tier selection via a live region.
+- Sharded rule packs; Trigger.dev adapter; Prisma 7 upgrade (clears audit findings).
+- Sentry, uptime monitor and the alerts in docs/REVIEW.md.

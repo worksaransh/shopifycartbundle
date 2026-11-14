@@ -27,7 +27,8 @@ export interface RunDeps {
 }
 
 export type RunResult =
-  { ok: true; set: number; deleted: number } | { ok: false; message: string; retryScheduled: boolean };
+  | { ok: true; set: number; deleted: number }
+  | { ok: false; message: string; retryScheduled: boolean; retriable: boolean };
 
 /** Merchant-safe message: says what happened and what to do. Never contains tokens or raw payloads. */
 export function friendlyError(e: unknown): { message: string; retriable: boolean } {
@@ -50,7 +51,7 @@ export function friendlyError(e: unknown): { message: string; retriable: boolean
 /** Full sync with status tracking. On failure sets Shop.syncStatus = FAILED so the admin shows a banner. */
 export async function runSync(shopDomain: string, deps: RunDeps): Promise<RunResult> {
   const state = await deps.repo.load(shopDomain);
-  if (!state) return { ok: false, message: "Shop not found", retryScheduled: false };
+  if (!state) return { ok: false, message: "Shop not found", retryScheduled: false, retriable: false };
   await deps.repo.markSyncing(state.shopId);
   try {
     const client = new GqlClient(await deps.admin(shopDomain), deps.gql);
@@ -67,7 +68,7 @@ export async function runSync(shopDomain: string, deps: RunDeps): Promise<RunRes
       await deps.scheduler.scheduleRetry(shopDomain, 60_000);
       retryScheduled = true;
     }
-    return { ok: false, message, retryScheduled };
+    return { ok: false, message, retryScheduled, retriable };
   }
 }
 

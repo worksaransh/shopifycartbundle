@@ -1,5 +1,6 @@
 import db from "../../db.server";
 import { syncShopMetafields } from "../sync/repo.server";
+import { syncOrRollback } from "../sync/activate.server";
 import { volumeFieldErrors, volumeInputSchema } from "./validation";
 
 export type VolumeSaveResult =
@@ -31,18 +32,30 @@ export async function createVolumeRule(domain: string, raw: unknown): Promise<Vo
       endsAt: day(v.endsAt),
     },
   });
-  const sync = await syncShopMetafields(domain);
-  return { ok: true, id: row.id, synced: sync.ok, ...(sync.ok ? {} : { syncMessage: sync.message }) };
+  const sync = await syncOrRollback(domain, async () => {
+    await db.volumeRule.updateMany({ where: { shopId: shop.id, id: row.id }, data: { status: "DRAFT" } });
+  });
+  return { ok: true, id: row.id, synced: sync.synced, ...(sync.synced ? {} : { syncMessage: sync.message }) };
 }
 
 export async function setVolumeStatus(domain: string, ids: string[], status: "ACTIVE" | "PAUSED") {
   const shop = await shopOf(domain);
+  const before =
+    status === "ACTIVE"
+      ? await db.volumeRule.findMany({
+          where: { shopId: shop.id, id: { in: ids } },
+          select: { id: true, status: true },
+        })
+      : [];
   const { count } = await db.volumeRule.updateMany({
     where: { shopId: shop.id, id: { in: ids } },
     data: { status },
   });
-  const sync = await syncShopMetafields(domain);
-  return { changed: count, synced: sync.ok, syncMessage: sync.ok ? undefined : sync.message };
+  const sync = await syncOrRollback(domain, async () => {
+    for (const r of before)
+      await db.volumeRule.updateMany({ where: { shopId: shop.id, id: r.id }, data: { status: r.status } });
+  });
+  return { changed: count, synced: sync.synced, syncMessage: sync.synced ? undefined : sync.message };
 }
 
 export async function deleteVolumeRules(domain: string, ids: string[]) {

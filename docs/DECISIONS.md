@@ -147,6 +147,22 @@ measured (no store); defaults are chosen so a fixed bundle is: pick products, Ne
 **Embed check.** Detecting the app embed via API needs `read_themes`, which we do not request. Home uses a manual
 "I did this" confirmation (stored in `Shop.settings.setup`).
 
+## Phases 3 to 8 (summary of decisions)
+
+- **Volume discounts live in the same Function and node** as bundles (no second Function): one run resolves conflicts
+  and uses one of the store's 25 discount-function slots. Date windows are `YYYY-MM-DD` in the shop timezone, compared with
+  `shop.localTime.date` in the Function (docs: Functions input exposes `localTime`), so no re-sync is needed at midnight.
+  A dated rule is skipped (fail safe) if the date cannot be read.
+- **Storefront** is server-rendered Liquid reading only `$app:bundlekit` metafields, plus three small vanilla-JS files
+  (13.8 KB gzipped total, budget 30 KB, enforced in CI). Collection upsell triggers are expanded to product ids at sync
+  because `/cart.js` has no collection data. Offered products are rendered by Liquid from handles, never from our server.
+- **Strings** live in one table (`packages/widgets/src/strings.ts`); the theme locale file must equal it (test).
+- **Attribution** counts only lines our Function discounted and whose id is a real rule of the shop (forged ids earn
+  nothing). Analytics roll up on write (one counter row per shop/day/type/ref), so there is no separate roll-up job or queue;
+  Trigger.dev remains deferred. AOV comparison needs 20 orders on both sides and is labelled correlation.
+- **Non-retriable sync failures roll back** the change that caused them (draft/previous status) instead of leaving the shop failed.
+- **Privacy:** no customer data is stored; `shop/redact` deletes all shop rows.
+
 ## Open items (carry forward)
 
 - Combined-discount behaviour with real merchant discount codes: unit tests cannot cover Shopify's combination engine; test on a dev store.

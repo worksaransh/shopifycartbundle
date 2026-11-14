@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
   shop: { findUnique: vi.fn() },
-  bundle: { create: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
+  bundle: { create: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), findMany: vi.fn() },
 }));
 const sync = vi.hoisted(() => vi.fn());
 vi.mock("../app/db.server", () => ({ default: db }));
@@ -98,7 +98,7 @@ describe("bundle service", () => {
     expect(sync).not.toHaveBeenCalled();
   });
   it("keeps the bundle and surfaces the sync failure instead of losing input", async () => {
-    sync.mockResolvedValue({ ok: false, message: "Shopify was busy", retryScheduled: true });
+    sync.mockResolvedValue({ ok: false, message: "Shopify was busy", retryScheduled: true, retriable: true });
     const r = await createBundle("dev.myshopify.com", valid);
     expect(r).toMatchObject({ ok: true, synced: false, syncMessage: "Shopify was busy" });
   });
@@ -117,5 +117,51 @@ describe("bundle service", () => {
   it("throws a clear error for an unknown shop", async () => {
     db.shop.findUnique.mockResolvedValue(null);
     await expect(createBundle("x.myshopify.com", valid)).rejects.toThrow(/Reopen the app/);
+  });
+});
+
+describe("non-retriable sync failures roll back to a safe state", () => {
+  const tooLarge = {
+    ok: false,
+    message: "Active rules is 12000 bytes; the limit is 9500. Remove products or rules and save again.",
+    retryScheduled: false,
+    retriable: false,
+  };
+  const busy = { ok: false, message: "Shopify was busy", retryScheduled: true, retriable: true };
+
+  it("a new bundle that does not fit is saved as a DRAFT and the store is re-synced to its previous state", async () => {
+    sync.mockResolvedValueOnce(tooLarge).mockResolvedValue({ ok: true, set: 1, deleted: 0 });
+    const r = await createBundle("dev.myshopify.com", valid);
+    expect(r).toMatchObject({ ok: true, synced: false });
+    expect((r as { syncMessage: string }).syncMessage).toMatch(/limit is 9500.*saved as a draft/);
+    expect(db.bundle.updateMany).toHaveBeenCalledWith({
+      where: { shopId: "shop1", id: "bundle1" },
+      data: { status: "DRAFT" },
+    });
+    expect(sync).toHaveBeenCalledTimes(2); // the failed attempt, then the restore
+  });
+  it("a retriable failure (Shopify busy) is NOT rolled back: the bundle stays active and Retry will work", async () => {
+    sync.mockResolvedValue(busy);
+    const r = await createBundle("dev.myshopify.com", valid);
+    expect(r).toMatchObject({ ok: true, synced: false, syncMessage: "Shopify was busy" });
+    expect(db.bundle.updateMany).not.toHaveBeenCalled();
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+  it("resuming bundles that do not fit restores their previous statuses", async () => {
+    db.bundle.findMany.mockResolvedValue([
+      { id: "a", status: "PAUSED" },
+      { id: "b", status: "DRAFT" },
+    ]);
+    sync.mockResolvedValueOnce(tooLarge).mockResolvedValue({ ok: true, set: 1, deleted: 0 });
+    const r = await setBundlesStatus("dev.myshopify.com", ["a", "b"], "ACTIVE");
+    expect(r.synced).toBe(false);
+    expect(db.bundle.updateMany).toHaveBeenCalledWith({
+      where: { shopId: "shop1", id: "a" },
+      data: { status: "PAUSED" },
+    });
+    expect(db.bundle.updateMany).toHaveBeenCalledWith({
+      where: { shopId: "shop1", id: "b" },
+      data: { status: "DRAFT" },
+    });
   });
 });

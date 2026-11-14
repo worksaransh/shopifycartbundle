@@ -9,8 +9,16 @@ const db = vi.hoisted(() => ({
     deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     update: vi.fn(),
   },
-  shop: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), upsert: vi.fn() },
-  webhookReceipt: { findUnique: vi.fn(), create: vi.fn().mockResolvedValue({}) },
+  shop: {
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    upsert: vi.fn(),
+    deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+  },
+  webhookReceipt: {
+    findUnique: vi.fn(),
+    create: vi.fn().mockResolvedValue({}),
+    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+  },
 }));
 vi.mock("../app/db.server", () => ({ default: db }));
 
@@ -89,21 +97,38 @@ describe("webhook idempotency", () => {
     expect(db.webhookReceipt.create).not.toHaveBeenCalled();
   });
 
-  it("privacy webhooks acknowledge valid deliveries and record a receipt", async () => {
+  it("customer privacy webhooks acknowledge, record a receipt, and delete nothing (we store no customer data)", async () => {
     const r = await routes();
     for (const [name, topic] of [
       ["dataRequest", "customers/data_request"],
       ["customersRedact", "customers/redact"],
-      ["shopRedact", "shop/redact"],
     ] as const) {
       db.webhookReceipt.create.mockClear();
       const res = (await call(
         r[name],
-        req(topic, '{"shop_domain":"dev.myshopify.com"}', { id: `id-${name}` }),
+        req(topic, '{"customer":{"id":1,"email":"a@b.co"}}', { id: `id-${name}` }),
       )) as Response;
       expect(res.status).toBe(200);
       expect(db.webhookReceipt.create).toHaveBeenCalledTimes(1);
     }
+    expect(db.shop.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("shop/redact deletes every row for that shop (shop cascade, sessions, receipts) and nothing for others", async () => {
+    const r = await routes();
+    const res = (await call(
+      r.shopRedact,
+      req("shop/redact", '{"shop_domain":"dev.myshopify.com"}', { id: "id-redact" }),
+    )) as Response;
+    expect(res.status).toBe(200);
+    expect(db.shop.deleteMany).toHaveBeenCalledWith({ where: { domain: SHOP } });
+    expect(db.session.deleteMany).toHaveBeenCalledWith({ where: { shop: SHOP } });
+    expect(db.webhookReceipt.deleteMany).toHaveBeenCalledWith({ where: { shopDomain: SHOP } });
+    expect(db.webhookReceipt.create).not.toHaveBeenCalled(); // no receipt re-created for the deleted shop
+    // idempotent: a second delivery just deletes nothing more
+    expect(
+      ((await call(r.shopRedact, req("shop/redact", "{}", { id: "id-redact-2" }))) as Response).status,
+    ).toBe(200);
   });
 });
 

@@ -27,6 +27,7 @@ export interface Kpis {
   /** upsell_added / upsell_viewed, or null when there were no views. A rate, not a conversion of orders. */
   upsellAcceptanceRate: number | null;
   tierSelections: number;
+  shippingBarCompleted: number;
   orders: { touched: number; untouched: number };
   /** Average order value of orders with / without BundleKit discounts. null when too few orders. */
   aov: {
@@ -68,6 +69,7 @@ export function computeKpis(
     upsellAdded: added,
     upsellAcceptanceRate: viewed > 0 ? added / viewed : null,
     tierSelections: count("TIER_SELECTED"),
+    shippingBarCompleted: count("SHIPPING_BAR_COMPLETED"),
     orders: { touched: touched.length, untouched: untouched.length },
     aov: {
       touchedMinor: aovT,

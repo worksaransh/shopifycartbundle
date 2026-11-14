@@ -1,3 +1,3 @@
-import { privacyAction } from "../lib/privacy-webhook.server";
+import { customerPrivacyAction } from "../lib/privacy-webhook.server";
 
-export const action = privacyAction();
+export const action = customerPrivacyAction();
