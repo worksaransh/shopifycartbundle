@@ -23,8 +23,9 @@ What we chose and why. Newest at the bottom of each section. Versions verified 2
 `read_products,write_products,read_orders,write_discounts`
 
 - `read_products`: resource picker and product/variant lookups for bundle and rule setup.
-- `write_products`: **provisional.** Needed to write product-level metafields (`$app:bundlekit` `bundles`/`volume`) with
-  `metafieldsSet`. Phase 1 will test whether app-reserved namespaces can be written without it; if so, drop it.
+- `write_products`: **confirmed required (Phase 1).** `metafieldsSet` "requires the same access level needed to mutate the
+  owner resource" (docs), so product-level metafields (`bundles`/`volume`) need it. Alternative that would drop the scope:
+  one shop-level metafield keyed by product (see BACKLOG).
 - `read_orders`: `orders/paid` and `refunds/create` attribution. Limitation: only the last 60 days are readable.
   `read_all_orders` is NOT requested; historic backfill is out of scope for v1.
 - `write_discounts`: create/update/pause the automatic app discount (`discountAutomaticAppCreate`).
@@ -47,11 +48,59 @@ What we chose and why. Newest at the bottom of each section. Versions verified 2
 - Webhooks are declared in `shopify.app.toml` only (app-specific subscriptions), including the three compliance topics.
   The template's demo `products/update` event subscription was removed.
 
+## Phase 1: pricing core and metafield sync
+
+**Rounding rule** (`packages/pricing/src/money.ts`): all money is integer minor units; every division rounds half up;
+a total split across lines gives each line its rounded share, then the remainder is settled from the last line
+backwards (never exceeding a line's cap), so line discounts always sum to the total exactly. Multiply-then-divide uses
+BigInt to avoid float error on large amounts. Property tests (fast-check, 500 runs each) cover: discount never exceeds a
+line total, totals reconcile, highest satisfied tier wins regardless of order, FIXED_PRICE never raises the price,
+zero-quantity / missing-variant / wrong-bundle-id lines never discount.
+
+**Bundle semantics** (`computeBundleDiscount`): lines are grouped by `_bundle_id`; each line is assigned to the first
+matching component; `instances = min(floor(units / required))`; only `instances * required` units per component are
+discounted (extra units stay full price). Incomplete bundle = no discount. AMOUNT and FIXED_PRICE values are per
+bundle instance.
+
+**Metafield contract** (`packages/config-schema`): namespace `$app:bundlekit`, every payload carries `schemaVersion: 1`,
+readers return null on unknown versions or bad shapes (fail safe). Keys: Shop `config`; Product `bundles`, `volume`;
+discount node `fn`.
+
+**Size limits (verified in docs 2026-11-14):**
+
+- json metafield max **128 KB** (2 MB global). Storefront payloads are capped at 100,000 bytes and fail loudly at save.
+- **Functions receive `null` for any metafield value over 10,000 bytes.** So Function config is NOT one shared blob.
+  Decision: **one automatic discount node per bundle / volume rule**, each with its own `fn` metafield (cap 9,500 bytes).
+  Worst-case schema-valid configs are about 4-5 KB (tested), so the cap cannot be hit through the UI.
+- Function input queries have a max cost of 30; each metafield read costs 3, so we read exactly one (`discountNode.metafield`).
+- Consequence to verify in Phase 2: Shopify limits how many active automatic app discounts a shop can have. If the
+  limit is small, shops with many rules will hit it. Phase 2 must measure it and, if needed, pack several small rules per node.
+- Per product: max 20 bundles and 10 volume rules (schema). A sync touching more than **5,000 products** fails with a
+  clear message; the bulk-operation path is in BACKLOG.
+
+**Sync design:** DB is the source of truth. `syncShop` computes the desired metafields (pure `buildDesired`), writes them
+with `metafieldsSet` in batches of 25 (API maximum), and deletes metafields that no longer apply
+(`metafieldsDelete`, also 25 per call, tracked via `Shop.syncedProductGids`). Collections are expanded to product ids
+with paginated queries. Retry: HTTP 429 / 5xx / network errors / GraphQL `THROTTLED` with exponential backoff, jitter,
+`Retry-After` and the throttle cost hint; 4xx and `userErrors` are never retried. Status lives on `Shop.syncStatus`
+(`IDLE|SYNCING|SYNCED|FAILED`) with a merchant-readable `syncError`; Home shows a banner with a Retry button.
+Reconciliation (`reconcileShop`) compares desired vs actual (JSON-normalised), repairs missing / changed / stale values,
+and only touches products we know about.
+
+**Trigger.dev: deferred.** It needs an account and project key that this environment does not have. The retry job is a
+`SyncScheduler` interface (default no-op) so Trigger.dev can implement `scheduleRetry` later without touching the sync
+code; until then FAILED state + the Retry button + `POST /api/jobs/reconcile` (Bearer `CRON_SECRET`, callable from any
+scheduler) cover the same ground. Concurrent syncs for one shop are last-write-wins; a lock is a Phase 8 item.
+
+**Not machine-validated:** the GraphQL documents in `app/services/sync/queries.ts`. The schema tool confirmed
+`metafieldsDelete(metafields: [MetafieldIdentifierInput!]!)` and that `Shop` has `id` and `metafield`; the full documents
+could not be validated here, so the first dev-store run must confirm them. Shop config is read with `shop { }`, not `nodes`.
+
 ## Open items (carry forward)
 
 - Function language (Rust vs JS): decide in Phase 2 with measured wasm size and instruction count; template sample
-  shows ~19k instructions for a trivial Rust Function.
-- Metafield size cap and Function input limits: measure in Phase 1; document the cap here.
+  shows ~19k instructions for a trivial Rust Function. `packages/pricing` uses BigInt and TypeScript; a Rust Function
+  would re-implement it, with the property-test cases ported as fixtures. Check BigInt support if choosing JS.
 - Combined-discount behaviour (`combinesWith`): decide in Phase 2 and test against merchant discount codes.
 - Theme-extension JS: Shopify suggests <=10 KB compressed per schema-referenced file; our 30 KB total budget is split
   across files accordingly.

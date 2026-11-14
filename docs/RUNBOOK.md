@@ -44,3 +44,18 @@ npm run dev                 # shopify app dev (needs Shopify CLI login + a dev s
 Not yet supported in code: rotating the key invalidates stored tokens, so merchants re-authenticate via token exchange
 on next open (sessions re-created automatically). Procedure: set the new key, `DELETE FROM "Session"`, redeploy.
 A dual-key read path is a Phase 8 task.
+
+## Metafield sync
+
+- Status: `Shop.syncStatus` (`SYNCED`, `FAILED`...). A FAILED shop shows a banner with Retry on Home.
+- Force a resync for one shop: press Retry in the admin, or call `syncShopMetafields(domain)`.
+- Daily drift repair (schedule this; Vercel Cron, GitHub Actions or Trigger.dev all work):
+
+```bash
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" "https://<app-url>/api/jobs/reconcile"
+```
+
+Add `?shop=<domain>` for one shop, `?repair=0` to report drift without fixing it.
+
+- "A client's storefront shows no bundle": check `syncStatus`, run reconcile with `?repair=0` for that shop, read the
+  product's `$app:bundlekit` metafields in the Shopify admin (Settings > Custom data) or via GraphQL.

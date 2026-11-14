@@ -12,6 +12,8 @@ const schema = z.object({
   TOKEN_ENCRYPTION_KEY: z
     .string()
     .refine((v) => Buffer.from(v, "base64").length === 32, "must be 32 bytes, base64-encoded"),
+  /** Bearer secret for /api/jobs/reconcile (daily drift repair). Unset = endpoint disabled. */
+  CRON_SECRET: z.string().min(32).optional(),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "silent"]).default("info"),
 });
 

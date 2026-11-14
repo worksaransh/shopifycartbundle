@@ -18,4 +18,6 @@ npm run dev
 
 Checks: `npm run lint && npm run format:check && npm run typecheck && npm test`
 
-Status: Phase 0 (scaffold). No features yet.
+Status: Phase 1 (pricing core and metafield sync). No storefront or Function yet.
+
+Packages: `packages/pricing` (pure money math), `packages/config-schema` (metafield contract).

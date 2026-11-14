@@ -74,6 +74,12 @@ module.exports = {
         "plugin:import/recommended",
         "plugin:import/typescript",
       ],
+      rules: {
+        // Leading underscore marks intentionally unused parameters (mocks, interface conformance).
+        "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+        // `import fc from "fast-check"` is the documented usage.
+        "import/no-named-as-default-member": "off",
+      },
     },
 
     // Node
