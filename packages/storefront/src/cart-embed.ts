@@ -82,7 +82,6 @@ export function initCartEmbed(data: EmbedData | null, deps: EmbedDeps = {}): Emb
   let adapter: Adapter | null = null;
   let say: ((m: string, o?: { focus?: boolean }) => void) | null = null;
   let lastHtml = "";
-  let lastCart: Cart | null = null;
   let barDone = false;
 
   function mount(): boolean {
@@ -161,7 +160,6 @@ export function initCartEmbed(data: EmbedData | null, deps: EmbedDeps = {}): Emb
   }
 
   function render(cart: Cart) {
-    lastCart = cart;
     if (!mount() || !root) return;
     const html = barHtml(cart) + offersHtml(cart);
     if (html === lastHtml) return; // unchanged: avoid flicker and layout work
