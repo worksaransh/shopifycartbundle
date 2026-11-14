@@ -106,3 +106,29 @@ describe("webhook idempotency", () => {
     }
   });
 });
+
+describe("attribution webhooks", () => {
+  it("orders/paid and refunds/create reject a bad HMAC with 401 and record nothing", async () => {
+    const recorded = vi.fn();
+    vi.doMock("../app/services/analytics/attribution.server", () => ({
+      recordOrderPaid: recorded,
+      recordRefund: recorded,
+    }));
+    vi.resetModules();
+    for (const mod of ["../app/routes/webhooks.orders.paid", "../app/routes/webhooks.refunds.create"]) {
+      const { action } = await import(mod);
+      let res: unknown;
+      try {
+        res = await action({
+          request: req("orders/paid", "{}", { hmac: "AAAA" }),
+          params: {},
+          context: {},
+        } as never);
+      } catch (e) {
+        res = e;
+      }
+      expect((res as Response).status).toBe(401);
+    }
+    expect(recorded).not.toHaveBeenCalled();
+  });
+});

@@ -11,6 +11,12 @@ scopes = "read_products,write_products,read_orders,write_discounts"
 [auth]
 redirect_urls = ["https://example.invalid/auth/callback"]
 
+# Storefront beacons: https://<shop>/apps/bundlekit/event -> <app_url>/proxy/event (signature verified in the route)
+[app_proxy]
+url = "https://example.invalid/proxy"
+subpath = "bundlekit"
+prefix = "apps"
+
 [webhooks]
 api_version = "2026-10"
 
@@ -23,6 +29,15 @@ api_version = "2026-10"
   [[webhooks.subscriptions]]
   uri = "/webhooks/app/scopes_update"
   topics = ["app/scopes_update"]
+
+  # Attribution (read_orders). Payloads contain customer PII: we read ids, quantities and money only and never log them.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/paid"
+  topics = ["orders/paid"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/refunds/create"
+  topics = ["refunds/create"]
 
   # Mandatory privacy webhooks
   [[webhooks.subscriptions]]

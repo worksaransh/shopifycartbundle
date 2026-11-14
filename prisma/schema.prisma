@@ -102,6 +102,7 @@ model Shop {
   upsellRules       UpsellRule[]
   events            EventDaily[]
   attributions      OrderAttribution[]
+  orderTotals       OrderTotal[]
 }
 
 model Bundle {
@@ -189,6 +190,21 @@ model OrderAttribution {
   createdAt    DateTime          @default(now())
 
   @@unique([shopId, orderGid, source, refId])
+  @@index([shopId, createdAt])
+}
+
+/// One row per paid order (id and totals only, no customer data). `touched` = it had at least one line our app discounted.
+/// Used for AOV with vs without BundleKit. totalMinor is reduced by refunds.
+model OrderTotal {
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderGid   String
+  totalMinor BigInt
+  currency   String
+  touched    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@id([shopId, orderGid])
   @@index([shopId, createdAt])
 }
 
