@@ -1,0 +1,187 @@
+// BundleKit data model. See docs/UX_SPEC.md and docs/DECISIONS.md.
+// Every tenant-owned table carries shopId; every query must be scoped by it (Phase 8 test).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // Supabase: DATABASE_URL = pooled (pgbouncer) URL, DIRECT_URL = direct URL for migrations.
+  directUrl = env("DIRECT_URL")
+}
+
+// Required by @shopify/shopify-app-session-storage-prisma. accessToken/refreshToken are
+// stored AES-256-GCM encrypted by app/lib/session-storage.server.ts.
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+
+  @@index([shop])
+}
+
+enum BundleType {
+  FIXED
+  MIX_MATCH
+}
+
+enum RuleStatus {
+  ACTIVE
+  PAUSED
+  DRAFT
+}
+
+enum DiscountType {
+  PERCENT
+  AMOUNT
+  FIXED_PRICE
+}
+
+enum TargetType {
+  PRODUCT
+  COLLECTION
+}
+
+enum EventType {
+  BUNDLE_VIEWED
+  BUNDLE_ADDED
+  UPSELL_VIEWED
+  UPSELL_ADDED
+  TIER_SELECTED
+  SHIPPING_BAR_COMPLETED
+  CART_SURFACE_MISSING
+}
+
+enum AttributionSource {
+  BUNDLE
+  VOLUME
+  UPSELL
+}
+
+model Shop {
+  id                String    @id @default(cuid())
+  domain            String    @unique
+  installedAt       DateTime  @default(now())
+  uninstalledAt     DateTime?
+  /// shipping bar, colours, locale, kill switch. Validated by zod (packages/config-schema in Phase 1).
+  settings          Json      @default("{}")
+  metafieldSyncedAt DateTime?
+
+  bundles           Bundle[]
+  volumeRules       VolumeRule[]
+  upsellRules       UpsellRule[]
+  events            EventDaily[]
+  attributions      OrderAttribution[]
+}
+
+model Bundle {
+  id             String       @id @default(cuid())
+  shopId         String
+  shop           Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type           BundleType
+  title          String
+  status         RuleStatus   @default(DRAFT)
+  discountType   DiscountType
+  /// PERCENT: basis points-free integer percent (1-90). AMOUNT/FIXED_PRICE: minor units as string.
+  discountValue  String
+  /// [{ productGid?, collectionGid?, quantity }]
+  items          Json
+  /// GID of the automatic app discount created via discountAutomaticAppCreate
+  discountGid    String?
+  startsAt       DateTime?
+  endsAt         DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([shopId, status])
+}
+
+model VolumeRule {
+  id          String      @id @default(cuid())
+  shopId      String
+  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  targetType  TargetType
+  targetGids  String[]
+  /// [{ minQty, percentOff }] 2-5 tiers, minQty strictly increasing
+  tiers       Json
+  status      RuleStatus  @default(DRAFT)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([shopId, status])
+}
+
+model UpsellRule {
+  id              String      @id @default(cuid())
+  shopId          String
+  shop            Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  triggerType     TargetType
+  triggerGids     String[]
+  /// max 3 enforced by zod
+  offerGids       String[]
+  discountPercent Int?
+  maxOffers       Int         @default(3)
+  hideIfInCart    Boolean     @default(true)
+  status          RuleStatus  @default(DRAFT)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([shopId, status])
+}
+
+/// Roll-up of beacons. No PII, no IPs.
+model EventDaily {
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  date       DateTime  @db.Date
+  eventType  EventType
+  refId      String
+  count      Int       @default(0)
+
+  @@id([shopId, date, eventType, refId])
+}
+
+model OrderAttribution {
+  id           String            @id @default(cuid())
+  shopId       String
+  shop         Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderGid     String
+  source       AttributionSource
+  refId        String
+  revenueMinor BigInt
+  currency     String
+  createdAt    DateTime          @default(now())
+
+  @@unique([shopId, orderGid, source, refId])
+  @@index([shopId, createdAt])
+}
+
+/// Idempotency for webhooks. id = X-Shopify-Webhook-Id. Keyed by shop domain (not FK) so
+/// receipts survive shop/redact deletion of Shop rows.
+model WebhookReceipt {
+  id         String   @id
+  topic      String
+  shopDomain String
+  receivedAt DateTime @default(now())
+
+  @@index([shopDomain])
+  @@index([receivedAt])
+}

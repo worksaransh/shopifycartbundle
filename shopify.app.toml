@@ -1,0 +1,38 @@
+# BundleKit. client_id is filled by `npm run config:link` (shopify app config link).
+client_id = ""
+name = "BundleKit"
+application_url = "https://example.invalid"
+embedded = true
+
+[access_scopes]
+# Minimum for v1; each scope justified in docs/DECISIONS.md.
+scopes = "read_products,write_products,read_orders,write_discounts"
+
+[auth]
+redirect_urls = ["https://example.invalid/auth/callback"]
+
+[webhooks]
+api_version = "2026-10"
+
+  # Handled by: app/routes/webhooks.app.uninstalled.tsx
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = ["app/uninstalled"]
+
+  # Handled by: app/routes/webhooks.app.scopes_update.tsx
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = ["app/scopes_update"]
+
+  # Mandatory privacy webhooks
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/data_request"
+  compliance_topics = ["customers/data_request"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/redact"
+  compliance_topics = ["customers/redact"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/redact"
+  compliance_topics = ["shop/redact"]
