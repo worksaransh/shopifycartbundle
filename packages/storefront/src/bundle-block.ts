@@ -28,6 +28,12 @@ interface Row {
   available: boolean;
 }
 
+/** After a successful add: tell the theme the cart changed, and ask it to open its drawer (themes that have none ignore it). */
+function defaultNotify() {
+  announceCartChange();
+  document.dispatchEvent(new CustomEvent("cart:open"));
+}
+
 export interface BlockDeps {
   add?: typeof addItems;
   beacon?: Beacon;
@@ -160,7 +166,7 @@ export function initBundleBlock(root: HTMLElement, deps: BlockDeps = {}): void {
         );
         say(strings["bundle.added"]);
         deps.beacon?.track("bundle_added", id);
-        (deps.notify ?? announceCartChange)();
+        (deps.notify ?? defaultNotify)();
       } catch (e) {
         say(e instanceof CartError && e.message && e.status === 422 ? e.message : strings["bundle.error"], {
           focus: true,

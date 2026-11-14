@@ -10,8 +10,13 @@ import { parseJson, safely } from "./util";
  * Quantity input: the product form's input[name=quantity]. If a theme has none, rows are still readable and tapping
  * does nothing (fails silently). We listen to input/change on the document so themes that swap the input still work.
  */
-const QTY_SELECTOR =
-  'form[action*="/cart/add"] input[name="quantity"], input[name="quantity"][form^="product-form"]';
+const QTY_SELECTOR = [
+  'form[action*="/cart/add"] input[name="quantity"]',
+  'form[action*="/cart/add"] [data-quantity-input]',
+  'input[name="quantity"]:not([data-line])',
+  "[data-quantity-input]:not([data-line])",
+].join(", ");
+const isQtyInput = (el: Element | null) => !!el?.matches?.(QTY_SELECTOR);
 
 export function activeTierIndex(mins: number[], qty: number): number {
   let best = -1;
@@ -45,9 +50,7 @@ export function initVolumeTable(root: HTMLElement, deps: { beacon?: Beacon } = {
     };
 
     for (const type of ["input", "change"])
-      doc.addEventListener(type, (e) =>
-        safely(() => (e.target as Element | null)?.matches?.("input[name='quantity']") && paint()),
-      );
+      doc.addEventListener(type, (e) => safely(() => isQtyInput(e.target as Element | null) && paint()));
     rows.forEach((row, i) =>
       row.addEventListener("click", () =>
         safely(() => {

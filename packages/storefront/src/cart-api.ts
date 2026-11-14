@@ -31,8 +31,29 @@ export class CartError extends Error {
 
 type Fetch = typeof fetch;
 
-export async function addItems(items: AddItem[], f: Fetch = fetch): Promise<void> {
-  const res = await f("/cart/add.js", {
+/** A theme's own cart API (e.g. the Fusion theme's `window.Fusion.cart`). Using it keeps the theme's drawer in sync. */
+interface ThemeCart {
+  add?: (items: AddItem[]) => Promise<unknown>;
+}
+const themeCart = (): ThemeCart | undefined => (globalThis as { Fusion?: { cart?: ThemeCart } }).Fusion?.cart;
+
+/**
+ * Adds lines to the cart. Resolves `true` when the THEME's own cart API did the add (the theme has already re-rendered
+ * its drawer), `false` when we posted to /cart/add.js ourselves (the caller should ask the theme to refresh).
+ * Only ever sends variant ids, quantities and properties: prices are never sent from the browser.
+ */
+export async function addItems(items: AddItem[], f?: Fetch): Promise<boolean> {
+  const theme = f ? undefined : themeCart();
+  if (theme?.add) {
+    try {
+      await theme.add(items);
+      return true;
+    } catch (e) {
+      // the theme throws Error(description) for 4xx such as out of stock; keep the message
+      throw new CartError(e instanceof Error && e.message ? e.message : "Could not add to cart", 422);
+    }
+  }
+  const res = await (f ?? fetch)("/cart/add.js", {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ items }),
@@ -47,6 +68,7 @@ export async function addItems(items: AddItem[], f: Fetch = fetch): Promise<void
     }
     throw new CartError(message, res.status);
   }
+  return false;
 }
 
 export async function getCart(f: Fetch = fetch): Promise<Cart> {

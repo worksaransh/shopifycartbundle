@@ -13,6 +13,10 @@ export interface Adapter {
   find(doc: Document): HTMLElement | null;
   /** Section ids to re-fetch so the theme's own cart lines update after we add an item. */
   sections?: string[];
+  /** Ask the theme to re-render its own cart (used instead of `sections` when the theme has an API for it). */
+  refresh?: (win: Window) => Promise<void> | void;
+  /** True when this theme's cart surface exists on the page even if we cannot mount right now (e.g. empty cart). */
+  exists?: (doc: Document) => boolean;
 }
 
 const first = (doc: Document, selectors: string[]) => {
@@ -21,6 +25,30 @@ const first = (doc: Document, selectors: string[]) => {
     if (el) return el;
   }
   return null;
+};
+
+/**
+ * "Fusion" theme (custom): <fusion-cart-drawer data-cart-drawer> with .drawer__body (hidden-list of items, absent
+ * when the cart is empty) and a cart page root [data-cart-page] > .cart-page__main. Both are re-rendered by the
+ * theme through `window.Fusion.refreshCart()` / its own cart:updated handler, which replaces innerHTML, so our root is
+ * dropped on each refresh and re-mounted by the embed. Markup read from the theme's own files; not yet run in a browser.
+ */
+const fusionRefresh = async (win: Window) => {
+  await (win as unknown as { Fusion?: { refreshCart?: () => Promise<void> } }).Fusion?.refreshCart?.();
+};
+
+export const fusionPage: Adapter = {
+  name: "fusion-cart-page",
+  find: (doc) => first(doc, ["[data-cart-page] .cart-page__main"]),
+  exists: (doc) => !!doc.querySelector("[data-cart-page]"),
+  refresh: fusionRefresh,
+};
+
+export const fusionDrawer: Adapter = {
+  name: "fusion-drawer",
+  find: (doc) => first(doc, ["[data-cart-drawer] .drawer__body:not(.cart-drawer__empty)"]),
+  exists: (doc) => !!doc.querySelector("[data-cart-drawer]"),
+  refresh: fusionRefresh,
 };
 
 export const dawnDrawer: Adapter = {
@@ -66,12 +94,24 @@ export function findSurface(
   doc: Document,
   cartSelector?: string,
 ): { adapter: Adapter; host: HTMLElement } | null {
-  const list = [genericAdapter(cartSelector), dawnDrawer, dawnPage, legacy].filter((a): a is Adapter => !!a);
+  // On the cart page the page adapter must win over the (hidden) drawer, so page adapters come first.
+  const list = [genericAdapter(cartSelector), fusionPage, fusionDrawer, dawnDrawer, dawnPage, legacy].filter(
+    (a): a is Adapter => !!a,
+  );
   for (const adapter of list) {
     const host = adapter.find(doc);
     if (host) return { adapter, host };
+    // A specific theme adapter recognised its theme but has nothing to mount into right now (e.g. empty cart).
+    // Do not fall through to generic adapters: they could match the same element and mount in the wrong place.
+    if (adapter.exists?.(doc)) return null;
   }
   return null;
+}
+
+/** True when some known theme cart surface is on the page, even if we cannot mount into it right now. */
+export function surfaceExists(doc: Document, cartSelector?: string): boolean {
+  if (findSurface(doc, cartSelector)) return true;
+  return [fusionPage, fusionDrawer].some((a) => a.exists?.(doc));
 }
 
 /** Re-fetch the given sections and swap their inner HTML, the same way Dawn updates its own cart. Never throws. */

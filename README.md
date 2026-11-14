@@ -56,7 +56,7 @@ docs/                      UX_SPEC, DECISIONS, BACKLOG, RUNBOOK, METRICS, SECURI
 
 ## Status
 
-All code below is built and covered by automated tests (217 tests, run in CI). **Nothing has been run on a real Shopify store yet**:
+All code below is built and covered by automated tests (227 tests, run in CI). **Nothing has been run on a real Shopify store yet**:
 no install, no checkout, no theme rendering, no Lighthouse. That is the main remaining risk; the exact steps are the
 "Dev-store verification checklist" in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 

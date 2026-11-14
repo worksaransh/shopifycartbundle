@@ -171,14 +171,20 @@ describe("safety", () => {
     expect(initCartEmbed({ ...data({ rules: [] }), config: { shippingBar: { enabled: false } } })).toBeNull();
     expect(root()).toBeNull();
   });
-  it("reports cart_surface_missing once and does nothing when no adapter matches", async () => {
-    document.body.innerHTML = "<main>no cart here</main>";
-    const b = beacon();
-    ctl = initCartEmbed(data(), { getCartImpl: async () => cart(5000), beacon: b });
-    await flush();
-    expect(b.once).toHaveBeenCalledWith("cart_surface_missing");
-    expect(root()).toBeNull();
-    expect(document.body.innerHTML).toBe("<main>no cart here</main>");
+  it("reports cart_surface_missing once (after the late-mount retry) and does nothing when no adapter matches", async () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = "<main>no cart here</main>";
+      const b = beacon();
+      ctl = initCartEmbed(data(), { getCartImpl: async () => cart(5000), beacon: b });
+      expect(b.once).not.toHaveBeenCalled(); // not before the retry
+      await vi.advanceTimersByTimeAsync(2600);
+      expect(b.once).toHaveBeenCalledWith("cart_surface_missing");
+      expect(root()).toBeNull();
+      expect(document.body.innerHTML).toBe("<main>no cart here</main>");
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("leaves the page alone if the cart request fails", async () => {
     ctl = initCartEmbed(data(), {

@@ -5,7 +5,7 @@ import {
   type UpsellRuleView,
 } from "@bundlekit/pricing";
 import { esc, formatMoney, resolveStrings, t, type Strings } from "@bundlekit/widgets";
-import { findSurface, refreshSections, type Adapter } from "./adapters";
+import { findSurface, refreshSections, surfaceExists, type Adapter } from "./adapters";
 import type { Beacon } from "./beacon";
 import { addItems, announceCartChange, getCart, type Cart } from "./cart-api";
 import { gid, liveRegion, prefersReducedMotion, safely } from "./util";
@@ -73,9 +73,16 @@ export function initCartEmbed(data: EmbedData | null, deps: EmbedDeps = {}): Emb
 
   const surface = () => findSurface(doc, data.config.cartSelector);
   if (!surface()) {
-    deps.beacon?.once("cart_surface_missing");
-    // drawers can mount late; one more try shortly after load, then give up quietly
-    setTimeout(() => safely(() => (surface() ? mount() : deps.beacon?.once("cart_surface_missing"))), 2500);
+    // Drawers can mount late. Check once more shortly after load; only then report a missing surface, and only if
+    // no known theme cart surface is on the page at all (an empty cart legitimately has nothing to mount into).
+    setTimeout(
+      () =>
+        safely(() => {
+          if (surface()) mount();
+          else if (!surfaceExists(doc, data.config.cartSelector)) deps.beacon?.once("cart_surface_missing");
+        }),
+      2500,
+    );
   }
 
   let root: HTMLElement | null = null;
@@ -193,11 +200,16 @@ export function initCartEmbed(data: EmbedData | null, deps: EmbedDeps = {}): Emb
     (deps.addImpl ?? addItems)([
       { id: variant.value, quantity: 1, properties: { _upsell_id: card.dataset.rule ?? "" } },
     ])
-      .then(async () => {
+      .then(async (themeRefreshed) => {
         say?.(t(strings["upsell.added"], { title }));
         deps.beacon?.track("upsell_added", card.dataset.rule);
+        // If the theme's own cart API did the add, it already re-rendered its cart. Otherwise ask the theme to
+        // refresh: via its own API when the adapter knows it, else by re-fetching its cart sections.
+        if (!themeRefreshed) {
+          if (adapter?.refresh && doc.defaultView) await adapter.refresh(doc.defaultView);
+          else await refreshSections(doc, adapter?.sections, deps.fetchImpl);
+        }
         announceCartChange(doc);
-        await refreshSections(doc, adapter?.sections, deps.fetchImpl);
         await refresh();
       })
       .catch(() => {
